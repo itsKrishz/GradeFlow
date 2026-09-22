@@ -16,7 +16,8 @@
     "test:evaluations": "ts-node test-evaluations-api.ts",
     "test:pipeline": "ts-node test-pipeline.ts",
     "test:ai": "ts-node test-ai-evaluator.ts",
-    "test:all": "npm run test:auth && npm run test:academic && npm run test:evaluations && npm run test:pipeline && npm run test:ai"
+    "test:copilot": "ts-node test-copilot.ts",
+    "test:all": "npm run test:auth && npm run test:academic && npm run test:evaluations && npm run test:pipeline && npm run test:ai && npm run test:copilot"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

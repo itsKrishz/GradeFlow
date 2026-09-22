@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { api } from '../../services/api';
 import { CopilotMessage, RubricCriterion } from '../../types';
 import { mockUnsubmittedStudents } from '../../data/mockData';
 import { 
@@ -86,7 +87,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
   };
 
   // The Conversational Intelligence & Rule Matcher
-  const processQuery = (rawQuery: string) => {
+  const processQuery = async (rawQuery: string) => {
     const text = rawQuery.trim();
     if (!text) return;
 
@@ -104,7 +105,51 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
 
     const lower = text.toLowerCase();
 
-    // Simulating natural processing time & visual tool execution steps
+    // Check if live API can handle this query (when idle and not local CSV export)
+    if (assignmentDraftState.stage === 'idle' && !lower.includes('export') && !lower.includes('csv')) {
+      try {
+        const response = await api.copilot.query(text);
+        if (response?.data) {
+          const data = response.data;
+          setIsTyping(false);
+
+          if (data.missingFieldsPrompt) {
+            setAssignmentDraftState({
+              stage: 'missing_details',
+              title: data.missingFieldsPrompt.collectedFields?.Title || 'New Assignment',
+            });
+          } else if (data.assignmentDraft) {
+            setAssignmentDraftState({
+              stage: 'preview_ready',
+              ...data.assignmentDraft,
+            });
+          }
+
+          setMessages(prev => [
+            ...prev,
+            {
+              id: `ai-${Date.now()}`,
+              sender: 'assistant',
+              text: data.text,
+              timestamp: 'Just now',
+              toolExecution: data.toolExecution,
+              inboxBreakdown: data.inboxBreakdown,
+              studentsList: data.studentsList,
+              flaggedList: data.flaggedList,
+              analyticsSummary: data.analyticsSummary,
+              assignmentDraft: data.assignmentDraft,
+              confirmationPrompt: data.confirmationPrompt,
+              missingFieldsPrompt: data.missingFieldsPrompt,
+            }
+          ]);
+          return;
+        }
+      } catch (err) {
+        console.log('[GradeFlow Copilot] Falling back to offline client response:', err);
+      }
+    }
+
+    // Offline / Multi-turn client processing fallback
     setTimeout(() => {
       setIsTyping(false);
 

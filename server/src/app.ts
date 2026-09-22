@@ -91,7 +91,8 @@ app.get('/api/v1', (_req: Request, res: Response) => {
       courses: '/api/v1/courses',
       assignments: '/api/v1/assignments',
       submissions: '/api/v1/submissions',
-      evaluations: '/api/v1/evaluations'
+      evaluations: '/api/v1/evaluations',
+      copilot: '/api/v1/copilot'
     }
   });
 });
@@ -101,6 +102,7 @@ import coursesRoutes from './routes/courses.routes';
 import assignmentsRoutes from './routes/assignments.routes';
 import submissionsRoutes from './routes/submissions.routes';
 import evaluationsRoutes from './routes/evaluations.routes';
+import copilotRoutes from './routes/copilot.routes';
 
 // 7. Route Modules
 app.use('/api/v1/auth', authRoutes);
@@ -108,6 +110,7 @@ app.use('/api/v1/courses', coursesRoutes);
 app.use('/api/v1/assignments', assignmentsRoutes);
 app.use('/api/v1/submissions', submissionsRoutes);
 app.use('/api/v1/evaluations', evaluationsRoutes);
+app.use('/api/v1/copilot', copilotRoutes);
 
 // 8. 404 Catch-All Handler (for routes that do not exist)
 app.use((req: Request, res: Response) => {
