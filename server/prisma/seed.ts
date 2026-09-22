@@ -1,4 +1,5 @@
 import { PrismaClient, Role, SubmissionStatus, ProcessingState, AssignmentStatus, NotificationType } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -18,10 +19,17 @@ async function main() {
 
   console.log('🧹 Cleaned existing records.');
 
+  // Pre-hash passwords
+  const teacherPasswordHash = await bcrypt.hash('teacher123', 10);
+  const studentPasswordHash = await bcrypt.hash('student123', 10);
+  const adminPasswordHash = await bcrypt.hash('admin123', 10);
+
   // 2. Seed Users
   const teacher = await prisma.user.create({
     data: {
+      username: 'teacher',
       email: 'teacher@gradeflow.edu',
+      passwordHash: teacherPasswordHash,
       name: 'Prof. Robert Vance',
       role: Role.TEACHER,
       department: 'Computer Science & Engineering',
@@ -30,7 +38,9 @@ async function main() {
 
   const studentAlex = await prisma.user.create({
     data: {
+      username: 'student',
       email: 'student@gradeflow.edu',
+      passwordHash: studentPasswordHash,
       name: 'Alex Rivera',
       role: Role.STUDENT,
       department: 'Computer Science & Engineering',
@@ -39,7 +49,9 @@ async function main() {
 
   const studentJordan = await prisma.user.create({
     data: {
+      username: 'jordan',
       email: 'jordan.l@gradeflow.edu',
+      passwordHash: studentPasswordHash,
       name: 'Jordan Lee',
       role: Role.STUDENT,
       department: 'Computer Science & Engineering',
@@ -48,7 +60,9 @@ async function main() {
 
   const studentSophia = await prisma.user.create({
     data: {
+      username: 'sophia',
       email: 'sophia.c@gradeflow.edu',
+      passwordHash: studentPasswordHash,
       name: 'Sophia Chen',
       role: Role.STUDENT,
       department: 'Computer Science & Engineering',
@@ -57,7 +71,9 @@ async function main() {
 
   const admin = await prisma.user.create({
     data: {
+      username: 'admin',
       email: 'admin@gradeflow.edu',
+      passwordHash: adminPasswordHash,
       name: 'Campus Administrator',
       role: Role.ADMIN,
       department: 'Academic Computing Services',

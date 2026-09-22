@@ -48,11 +48,12 @@ enum NotificationType {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String   @default("pbkdf2_placeholder")
+  id           String             @id @default(uuid())
+  username     String?            @unique
+  email        String             @unique
+  passwordHash String             @default("pbkdf2_placeholder")
   name         String
-  role         Role     @default(STUDENT)
+  role         Role               @default(STUDENT)
   department   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

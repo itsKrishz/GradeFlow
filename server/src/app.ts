@@ -91,7 +91,12 @@ app.get('/api/v1', (_req: Request, res: Response) => {
   });
 });
 
-// 7. 404 Catch-All Handler (for routes that do not exist)
+import authRoutes from './routes/auth.routes';
+
+// 7. Route Modules
+app.use('/api/v1/auth', authRoutes);
+
+// 8. 404 Catch-All Handler (for routes that do not exist)
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     error: 'NotFound',
