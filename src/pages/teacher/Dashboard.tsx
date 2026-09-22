@@ -61,53 +61,69 @@ export const TeacherDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 4 Key Statistics Cards - Colorful, Larger Headings, Only Heading & Number */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 4 Key Statistics Cards - Clean, Minimalist, Academic */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Pending Evaluations */}
-        <div className="bg-amber-50/90 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-600/70 rounded-xl p-5 shadow-sm flex flex-col justify-between transition-transform hover:-translate-y-0.5">
-          <h3 className="text-base font-bold text-amber-900 dark:text-amber-200 tracking-tight">
-            Pending Evaluations
-          </h3>
-          <div className="mt-3">
-            <span className="text-4xl font-extrabold text-amber-600 dark:text-amber-400 font-mono">
-              {totalPending}
+        <div 
+          onClick={() => navigate('/teacher/inbox')}
+          className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-4 shadow-sm hover:border-slate-400 dark:hover:border-zinc-600 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Pending Evaluations
             </span>
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+          </div>
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
+            {totalPending}
           </div>
         </div>
 
         {/* Completed Evaluations */}
-        <div className="bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-600/70 rounded-xl p-5 shadow-sm flex flex-col justify-between transition-transform hover:-translate-y-0.5">
-          <h3 className="text-base font-bold text-emerald-900 dark:text-emerald-200 tracking-tight">
-            Completed Evaluations
-          </h3>
-          <div className="mt-3">
-            <span className="text-4xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
-              {totalEvaluated}
+        <div 
+          onClick={() => navigate('/teacher/inbox')}
+          className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-4 shadow-sm hover:border-slate-400 dark:hover:border-zinc-600 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Completed Evaluations
             </span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          </div>
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
+            {totalEvaluated}
           </div>
         </div>
 
         {/* Late Submissions */}
-        <div className="bg-rose-50/90 dark:bg-rose-950/40 border-2 border-rose-300 dark:border-rose-600/70 rounded-xl p-5 shadow-sm flex flex-col justify-between transition-transform hover:-translate-y-0.5">
-          <h3 className="text-base font-bold text-rose-900 dark:text-rose-200 tracking-tight">
-            Late Submissions
-          </h3>
-          <div className="mt-3">
-            <span className="text-4xl font-extrabold text-rose-600 dark:text-rose-400 font-mono">
-              {totalLate}
+        <div 
+          onClick={() => navigate('/teacher/inbox')}
+          className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-4 shadow-sm hover:border-slate-400 dark:hover:border-zinc-600 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Late Submissions
             </span>
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
+          </div>
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
+            {totalLate}
           </div>
         </div>
 
         {/* Active Courses */}
-        <div className="bg-indigo-50/90 dark:bg-indigo-950/40 border-2 border-indigo-300 dark:border-indigo-600/70 rounded-xl p-5 shadow-sm flex flex-col justify-between transition-transform hover:-translate-y-0.5">
-          <h3 className="text-base font-bold text-indigo-900 dark:text-indigo-200 tracking-tight">
-            Active Courses
-          </h3>
-          <div className="mt-3">
-            <span className="text-4xl font-extrabold text-indigo-600 dark:text-indigo-400 font-mono">
-              {totalActiveCourses}
+        <div 
+          onClick={() => navigate('/teacher/courses')}
+          className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-4 shadow-sm hover:border-slate-400 dark:hover:border-zinc-600 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Active Courses
             </span>
+            <span className="w-2 h-2 rounded-full bg-indigo-500" />
+          </div>
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
+            {totalActiveCourses}
           </div>
         </div>
       </div>

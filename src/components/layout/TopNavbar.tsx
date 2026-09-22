@@ -16,7 +16,8 @@ import {
   Clock,
   AlertTriangle,
   Check,
-  Inbox
+  Inbox,
+  PanelLeft
 } from 'lucide-react';
 import { Role } from '../../types';
 
@@ -24,7 +25,7 @@ interface TopNavbarProps {
   onToggleSidebar?: () => void;
 }
 
-export const TopNavbar: React.FC<TopNavbarProps> = () => {
+export const TopNavbar: React.FC<TopNavbarProps> = ({ onToggleSidebar }) => {
   const { 
     isDarkMode, 
     toggleTheme, 
@@ -103,35 +104,45 @@ export const TopNavbar: React.FC<TopNavbarProps> = () => {
   };
 
   return (
-    <header className="h-16 bg-white dark:bg-academic-darkCard border-b border-academic-lightBorder dark:border-academic-darkBorder px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 transition-colors duration-150">
-      {/* Left side: Page Title & Optional Quick Search */}
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg font-semibold text-academic-lightText dark:text-academic-darkText tracking-tight">
+    <header className="h-14 bg-white dark:bg-academic-darkCard border-b border-academic-lightBorder dark:border-academic-darkBorder px-3 sm:px-5 flex items-center justify-between sticky top-0 z-30 transition-colors duration-150">
+      {/* Left side: Sidebar Toggle, Page Title & Optional Quick Search */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {onToggleSidebar && (
+          <button
+            onClick={onToggleSidebar}
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
+            title="Toggle sidebar"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        )}
+
+        <h1 className="text-base font-semibold text-academic-lightText dark:text-academic-darkText tracking-tight">
           {getPageTitle()}
         </h1>
 
-        <div className="hidden md:flex items-center relative ml-4">
-          <Search className="w-4 h-4 absolute left-3 text-academic-lightMuted dark:text-academic-darkMuted" />
+        <div className="hidden md:flex items-center relative ml-3">
+          <Search className="w-3.5 h-3.5 absolute left-3 text-academic-lightMuted dark:text-academic-darkMuted" />
           <input
             type="text"
             placeholder="Search assignments, students..."
-            className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-academic-lightBorder dark:border-academic-darkBorder rounded-md text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-academic-primary w-64 transition-all"
+            className="pl-8 pr-3 py-1 text-xs bg-slate-50 dark:bg-zinc-900 border border-academic-lightBorder dark:border-academic-darkBorder rounded-md text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 w-56 transition-all"
           />
         </div>
       </div>
 
       {/* Right side: Controls & Profile */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Prominent Copilot Button (Teacher Only) */}
+      <div className="flex items-center gap-2">
+        {/* Minimalist Copilot Button (Teacher Only) */}
         {currentUser.role === 'teacher' && (
           <button
             onClick={openCopilot}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-700 transition-colors"
             title="GradeFlow AI Copilot (⌘K)"
           >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <Sparkles className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
             <span className="hidden sm:inline">Copilot</span>
-            <kbd className="hidden md:inline-block text-[10px] font-mono px-1 py-0.2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded text-slate-500 dark:text-slate-400">
+            <kbd className="hidden md:inline-block text-[10px] font-mono px-1 py-0.2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded text-slate-400">
               ⌘K
             </kbd>
           </button>

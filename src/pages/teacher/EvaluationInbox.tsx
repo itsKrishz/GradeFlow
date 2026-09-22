@@ -180,78 +180,90 @@ export const EvaluationInbox: React.FC = () => {
         </div>
       </div>
 
-      {/* 4 Metric Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* 4 Metric Summary Cards - Clean Minimalist Academic */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         {/* Pending */}
         <div 
           onClick={() => { setActiveFilter('pending'); setViewMode('roster'); }}
-          className={`p-4 rounded-xl border cursor-pointer transition-all ${
+          className={`p-4 rounded-lg border cursor-pointer transition-all ${
             activeFilter === 'pending'
-              ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-400 dark:border-amber-600 shadow-sm'
-              : 'bg-white dark:bg-academic-darkCard border-academic-lightBorder dark:border-academic-darkBorder hover:border-amber-300'
+              ? 'bg-slate-50 dark:bg-zinc-800/80 border-slate-400 dark:border-zinc-500 shadow-sm'
+              : 'bg-white dark:bg-academic-darkCard border-academic-lightBorder dark:border-academic-darkBorder hover:border-slate-300 dark:hover:border-zinc-700'
           }`}
         >
-          <div className="text-xs font-bold text-amber-800 dark:text-amber-200 uppercase tracking-tight">
-            Pending
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Pending
+            </span>
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
           </div>
-          <div className="mt-2 text-3xl font-extrabold text-amber-600 dark:text-amber-400 font-mono">
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
             {totalPending}
           </div>
-          <div className="text-[10px] text-slate-500 mt-1">Awaiting instructor grading</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Awaiting grading</div>
         </div>
 
         {/* Late */}
         <div 
           onClick={() => { setActiveFilter('late'); setViewMode('roster'); }}
-          className={`p-4 rounded-xl border cursor-pointer transition-all ${
+          className={`p-4 rounded-lg border cursor-pointer transition-all ${
             activeFilter === 'late'
-              ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-400 dark:border-rose-600 shadow-sm'
-              : 'bg-white dark:bg-academic-darkCard border-academic-lightBorder dark:border-academic-darkBorder hover:border-rose-300'
+              ? 'bg-slate-50 dark:bg-zinc-800/80 border-slate-400 dark:border-zinc-500 shadow-sm'
+              : 'bg-white dark:bg-academic-darkCard border-academic-lightBorder dark:border-academic-darkBorder hover:border-slate-300 dark:hover:border-zinc-700'
           }`}
         >
-          <div className="text-xs font-bold text-rose-800 dark:text-rose-200 uppercase tracking-tight">
-            Late Submissions
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Late Submissions
+            </span>
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
           </div>
-          <div className="mt-2 text-3xl font-extrabold text-rose-600 dark:text-rose-400 font-mono">
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
             {totalLate}
           </div>
-          <div className="text-[10px] text-slate-500 mt-1">Penalty rules applicable</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Penalty applicable</div>
         </div>
 
         {/* Flagged */}
         <div 
           onClick={() => { setActiveFilter('flagged'); setViewMode('roster'); }}
-          className={`p-4 rounded-xl border cursor-pointer transition-all ${
+          className={`p-4 rounded-lg border cursor-pointer transition-all ${
             activeFilter === 'flagged'
-              ? 'bg-red-50 dark:bg-red-950/40 border-red-400 dark:border-red-600 shadow-sm'
-              : 'bg-white dark:bg-academic-darkCard border-academic-lightBorder dark:border-academic-darkBorder hover:border-red-300'
+              ? 'bg-slate-50 dark:bg-zinc-800/80 border-slate-400 dark:border-zinc-500 shadow-sm'
+              : 'bg-white dark:bg-academic-darkCard border-academic-lightBorder dark:border-academic-darkBorder hover:border-slate-300 dark:hover:border-zinc-700'
           }`}
         >
-          <div className="text-xs font-bold text-red-800 dark:text-red-200 uppercase tracking-tight">
-            Flagged Overlap
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Flagged Overlap
+            </span>
+            <span className="w-2 h-2 rounded-full bg-red-500" />
           </div>
-          <div className="mt-2 text-3xl font-extrabold text-red-600 dark:text-red-400 font-mono">
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
             {totalFlagged}
           </div>
-          <div className="text-[10px] text-slate-500 mt-1">Integrity audit required</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Integrity review</div>
         </div>
 
         {/* Completed */}
         <div 
           onClick={() => { setActiveFilter('completed'); setViewMode('roster'); }}
-          className={`p-4 rounded-xl border cursor-pointer transition-all ${
+          className={`p-4 rounded-lg border cursor-pointer transition-all ${
             activeFilter === 'completed'
-              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-600 shadow-sm'
-              : 'bg-white dark:bg-academic-darkCard border-academic-lightBorder dark:border-academic-darkBorder hover:border-emerald-300'
+              ? 'bg-slate-50 dark:bg-zinc-800/80 border-slate-400 dark:border-zinc-500 shadow-sm'
+              : 'bg-white dark:bg-academic-darkCard border-academic-lightBorder dark:border-academic-darkBorder hover:border-slate-300 dark:hover:border-zinc-700'
           }`}
         >
-          <div className="text-xs font-bold text-emerald-800 dark:text-emerald-200 uppercase tracking-tight">
-            Completed
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Completed
+            </span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
           </div>
-          <div className="mt-2 text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono">
             {totalCompleted}
           </div>
-          <div className="text-[10px] text-slate-500 mt-1">Evaluated and finalized</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Grades finalized</div>
         </div>
       </div>
 
