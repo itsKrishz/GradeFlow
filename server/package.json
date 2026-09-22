@@ -15,7 +15,8 @@
     "test:academic": "ts-node test-academic-api.ts",
     "test:evaluations": "ts-node test-evaluations-api.ts",
     "test:pipeline": "ts-node test-pipeline.ts",
-    "test:all": "npm run test:auth && npm run test:academic && npm run test:evaluations && npm run test:pipeline"
+    "test:ai": "ts-node test-ai-evaluator.ts",
+    "test:all": "npm run test:auth && npm run test:academic && npm run test:evaluations && npm run test:pipeline && npm run test:ai"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -29,6 +30,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/genai": "^2.24.0",
     "@prisma/client": "^6.4.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",

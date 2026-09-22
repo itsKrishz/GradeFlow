@@ -390,3 +390,116 @@ export async function updateSimilarityReport(
     });
   }
 }
+
+import { evaluateSubmissionWithAI, generateFeedbackFromScores } from '../services/ai-evaluator.service';
+
+/**
+ * POST /api/v1/evaluations/ai-evaluate/:submissionId
+ * On-demand AI evaluation of a student submission against assignment rubrics
+ */
+export async function triggerAIEvaluation(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  try {
+    const submissionId = req.params.submissionId as string;
+    const user = req.user!;
+
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        student: true,
+        assignment: {
+          include: {
+            course: true,
+            rubricCriteria: { orderBy: { orderIndex: 'asc' } },
+          },
+        },
+      },
+    });
+
+    if (!submission) {
+      res.status(404).json({ error: 'NotFound', message: 'Submission not found' });
+      return;
+    }
+
+    if (user.role !== 'ADMIN' && submission.assignment.course.teacherId !== user.id) {
+      res.status(403).json({ error: 'Forbidden', message: 'Access denied' });
+      return;
+    }
+
+    const aiResult = await evaluateSubmissionWithAI({
+      submissionText: submission.fileText || `[Document: ${submission.fileName}]`,
+      assignmentTitle: submission.assignment.title,
+      assignmentDescription: submission.assignment.description,
+      rubricCriteria: submission.assignment.rubricCriteria,
+      studentName: submission.student.name,
+    });
+
+    const evaluation = await prisma.evaluation.upsert({
+      where: { submissionId },
+      update: {
+        totalScore: aiResult.totalScore,
+        percentage: aiResult.percentage,
+        grade: aiResult.grade,
+        feedback: aiResult.overallFeedback,
+        rubricScores: aiResult.rubricScores as any,
+        aiAssisted: true,
+        evaluatedAt: new Date(),
+      },
+      create: {
+        submissionId,
+        evaluatorId: user.id,
+        totalScore: aiResult.totalScore,
+        percentage: aiResult.percentage,
+        grade: aiResult.grade,
+        feedback: aiResult.overallFeedback,
+        rubricScores: aiResult.rubricScores as any,
+        aiAssisted: true,
+        published: false,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'AI evaluation completed successfully.',
+      evaluation,
+      aiProvider: aiResult.provider,
+    });
+  } catch (error: any) {
+    console.error('[Trigger AI Evaluation Error]:', error);
+    res.status(500).json({ error: 'ServerError', message: 'AI evaluation failed.' });
+  }
+}
+
+/**
+ * POST /api/v1/evaluations/generate-feedback
+ * Generates personalized, constructive feedback text given scores and criteria
+ */
+export async function generateAIFeedback(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  try {
+    const { rubricScores, criteria, studentName } = req.body;
+
+    if (!criteria || !Array.isArray(criteria)) {
+      res.status(400).json({ error: 'ValidationError', message: 'Criteria list required' });
+      return;
+    }
+
+    const feedback = generateFeedbackFromScores({
+      rubricScores: rubricScores || {},
+      criteria,
+      studentName: studentName || 'Student',
+    });
+
+    res.status(200).json({
+      success: true,
+      feedback,
+    });
+  } catch (error: any) {
+    console.error('[Generate AI Feedback Error]:', error);
+    res.status(500).json({ error: 'ServerError', message: error.message });
+  }
+}

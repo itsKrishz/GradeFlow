@@ -5,6 +5,8 @@ import {
   getEvaluationBySubmissionId,
   saveEvaluation,
   updateSimilarityReport,
+  triggerAIEvaluation,
+  generateAIFeedback,
 } from '../controllers/evaluations.controller';
 import { authenticate, requireRole } from '../middleware/auth';
 
@@ -24,5 +26,11 @@ router.post('/', requireRole(Role.TEACHER, Role.ADMIN), saveEvaluation);
 
 // Update similarity report and integrity flag status (Instructors/Admins only)
 router.put('/similarity/:submissionId', requireRole(Role.TEACHER, Role.ADMIN), updateSimilarityReport);
+
+// Trigger on-demand AI Rubric Evaluation for a submission (Instructors/Admins only)
+router.post('/ai-evaluate/:submissionId', requireRole(Role.TEACHER, Role.ADMIN), triggerAIEvaluation);
+
+// Generate personalized constructive feedback from rubric scores (Instructors/Admins only)
+router.post('/generate-feedback', requireRole(Role.TEACHER, Role.ADMIN), generateAIFeedback);
 
 export default router;

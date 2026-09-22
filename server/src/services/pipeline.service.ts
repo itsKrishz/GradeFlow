@@ -4,6 +4,7 @@ import { EventEmitter } from 'events';
 import prisma from '../lib/prisma';
 import { extractDocumentText } from './extractor.service';
 import { analyzeSubmissionSimilarity } from './similarity.service';
+import { evaluateSubmissionWithAI } from './ai-evaluator.service';
 import { NotificationType, ProcessingState, SubmissionStatus } from '@prisma/client';
 
 export interface PipelineJobStatus {
@@ -167,62 +168,40 @@ async function processSubmission(submissionId: string): Promise<void> {
     data: { processingState: ProcessingState.AI_EVALUATION },
   });
 
-  // Calculate rubric criteria scores based on rubrics
-  const rubricCriteria = submission.assignment.rubricCriteria;
-  let totalScore = 0;
-  let totalPossible = 0;
-
-  const rubricScores = rubricCriteria.map((c) => {
-    totalPossible += c.maxMarks;
-    // Base score between 80% and 95% of maxMarks (minus penalty if flagged)
-    const penalty = similarityResult.flagged ? 0.35 : 0;
-    const factor = Math.max(0.4, 0.88 - penalty);
-    const score = Math.round(c.maxMarks * factor * 2) / 2;
-    totalScore += score;
-    return {
-      criterionTitle: c.title,
-      score,
-      maxMarks: c.maxMarks,
-      comment: `Evaluated against '${c.title}'. Strong conceptual execution observed.`,
-    };
+  // Execute AI Rubric Scoring Engine
+  const aiResult = await evaluateSubmissionWithAI({
+    submissionText: extractedText,
+    assignmentTitle: submission.assignment.title,
+    assignmentDescription: submission.assignment.description,
+    rubricCriteria: submission.assignment.rubricCriteria,
+    studentName: submission.student.name,
   });
 
-  const percentage = totalPossible > 0 ? Math.round((totalScore / totalPossible) * 1000) / 10 : 0;
-  let grade = 'B';
-  if (percentage >= 90) grade = 'A';
-  else if (percentage >= 80) grade = 'B';
-  else if (percentage >= 70) grade = 'C';
-  else if (percentage >= 60) grade = 'D';
-  else grade = 'F';
+  const feedbackText = similarityResult.flagged
+    ? `${aiResult.overallFeedback} [Academic Warning: Similarity flagged at ${similarityResult.overallScore}% with ${similarityResult.matchedSource}].`
+    : aiResult.overallFeedback;
 
   // Create initial draft evaluation (ready for instructor review in Evaluation Workspace)
   await prisma.evaluation.upsert({
     where: { submissionId },
     update: {
-      totalScore,
-      percentage,
-      grade,
-      feedback: `AI Pre-evaluation complete. Overall performance: ${percentage}%. ${
-        similarityResult.flagged
-          ? 'Warning: High similarity flagged with previous cohort submission.'
-          : 'Submission satisfies structural rubric expectations.'
-      }`,
-      rubricScores,
+      totalScore: aiResult.totalScore,
+      percentage: aiResult.percentage,
+      grade: aiResult.grade,
+      feedback: feedbackText,
+      rubricScores: aiResult.rubricScores as any,
       aiAssisted: true,
       published: false, // Remains in draft until instructor confirms
+      evaluatedAt: new Date(),
     },
     create: {
       submissionId,
       evaluatorId: submission.assignment.course.teacherId,
-      totalScore,
-      percentage,
-      grade,
-      feedback: `AI Pre-evaluation complete. Overall performance: ${percentage}%. ${
-        similarityResult.flagged
-          ? 'Warning: High similarity flagged with previous cohort submission.'
-          : 'Submission satisfies structural rubric expectations.'
-      }`,
-      rubricScores,
+      totalScore: aiResult.totalScore,
+      percentage: aiResult.percentage,
+      grade: aiResult.grade,
+      feedback: feedbackText,
+      rubricScores: aiResult.rubricScores as any,
       aiAssisted: true,
       published: false,
     },
