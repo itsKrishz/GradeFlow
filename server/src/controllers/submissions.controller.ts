@@ -3,18 +3,19 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { AuthenticatedRequest } from '../types/auth';
 import { ProcessingState, SubmissionStatus } from '@prisma/client';
+import { enqueueSubmissionPipeline, getJobStatus } from '../services/pipeline.service';
 
 const createSubmissionSchema = z.object({
   assignmentId: z.string().uuid('Valid assignment ID is required'),
-  fileName: z.string().min(1, 'File name is required'),
-  fileSize: z.string().min(1, 'File size is required (e.g. 2.4 MB)'),
+  fileName: z.string().optional(),
+  fileSize: z.string().optional(),
   fileUrl: z.string().optional(),
   fileText: z.string().optional(),
 });
 
 /**
  * POST /api/v1/submissions
- * Student submits an assignment (handles new submission or updates existing one)
+ * Student submits an assignment (handles JSON or multipart file upload, then queues async pipeline)
  */
 export async function createSubmission(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -28,7 +29,27 @@ export async function createSubmission(req: AuthenticatedRequest, res: Response)
       return;
     }
 
-    const parseResult = createSubmissionSchema.safeParse(req.body);
+    // Support both multipart file upload and JSON body
+    let assignmentId = req.body.assignmentId;
+    let fileName = req.body.fileName;
+    let fileSize = req.body.fileSize || '1.0 MB';
+    let fileUrl = req.body.fileUrl;
+    let fileText = req.body.fileText;
+
+    if (req.file) {
+      fileName = req.file.originalname;
+      fileSize = `${(req.file.size / (1024 * 1024)).toFixed(2)} MB`;
+      fileUrl = `uploads/submissions/${req.file.filename}`;
+    }
+
+    const parseResult = createSubmissionSchema.safeParse({
+      assignmentId,
+      fileName,
+      fileSize,
+      fileUrl,
+      fileText,
+    });
+
     if (!parseResult.success) {
       res.status(400).json({
         error: 'ValidationError',
@@ -37,8 +58,6 @@ export async function createSubmission(req: AuthenticatedRequest, res: Response)
       });
       return;
     }
-
-    const { assignmentId, fileName, fileSize, fileUrl, fileText } = parseResult.data;
 
     // Check that assignment exists
     const assignment = await prisma.assignment.findUnique({
@@ -81,7 +100,7 @@ export async function createSubmission(req: AuthenticatedRequest, res: Response)
         },
       },
       update: {
-        fileName,
+        fileName: fileName || 'submission.pdf',
         fileSize,
         fileUrl: fileUrl || null,
         fileText: fileText || null,
@@ -92,7 +111,7 @@ export async function createSubmission(req: AuthenticatedRequest, res: Response)
       create: {
         assignmentId,
         studentId: student.id,
-        fileName,
+        fileName: fileName || 'submission.pdf',
         fileSize,
         fileUrl: fileUrl || null,
         fileText: fileText || null,
@@ -106,16 +125,77 @@ export async function createSubmission(req: AuthenticatedRequest, res: Response)
       },
     });
 
-    res.status(201).json({
+    // Enqueue asynchronous background processing pipeline
+    enqueueSubmissionPipeline(submission.id);
+
+    // Return HTTP 202 Accepted (Pipeline triggered in background)
+    res.status(202).json({
       success: true,
-      message: `Assignment submitted successfully for '${submission.assignment.title}'.`,
+      message: `Assignment submitted successfully for '${submission.assignment.title}'. Asynchronous pipeline queued.`,
       submission,
+      pipeline: {
+        status: 'PENDING',
+        statusUrl: `/api/v1/submissions/${submission.id}/status`,
+      },
     });
   } catch (error: any) {
     console.error('[Create Submission Error]:', error);
     res.status(500).json({
       error: 'ServerError',
       message: 'Failed to process submission.',
+    });
+  }
+}
+
+/**
+ * GET /api/v1/submissions/:submissionId/status
+ * Real-time polling endpoint to observe background pipeline progression
+ */
+export async function getSubmissionStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const submissionId = req.params.submissionId as string;
+    const user = req.user!;
+
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        assignment: { include: { course: true } },
+      },
+    });
+
+    if (!submission) {
+      res.status(404).json({
+        error: 'NotFound',
+        message: `Submission with ID '${submissionId}' not found.`,
+      });
+      return;
+    }
+
+    // Role check
+    if (user.role === 'STUDENT' && submission.studentId !== user.id) {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: 'You are not authorized to view status for other students.',
+      });
+      return;
+    }
+
+    const liveJob = getJobStatus(submissionId);
+
+    res.status(200).json({
+      success: true,
+      submissionId,
+      processingState: submission.processingState,
+      status: submission.status,
+      progress: liveJob?.progress ?? (submission.processingState === 'COMPLETED' ? 100 : 0),
+      stageMessage: liveJob?.stageMessage ?? `Status: ${submission.processingState}`,
+      error: liveJob?.error,
+    });
+  } catch (error: any) {
+    console.error('[Get Submission Status Error]:', error);
+    res.status(500).json({
+      error: 'ServerError',
+      message: 'Failed to retrieve submission pipeline status.',
     });
   }
 }

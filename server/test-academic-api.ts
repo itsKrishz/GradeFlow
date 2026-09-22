@@ -190,7 +190,7 @@ async function runTests() {
       }),
     });
     const submitValidData: any = await submitValidRes.json();
-    assert(submitValidRes.status === 201, 'Student successfully submits assignment (201 Created)');
+    assert(submitValidRes.status === 201 || submitValidRes.status === 202, 'Student successfully submits assignment (202 Accepted)');
     assert(submitValidData.submission?.status === 'SUBMITTED', 'Submission status is SUBMITTED');
     const createdSubmissionId = submitValidData.submission?.id;
 

@@ -32,11 +32,16 @@ app.use(
   })
 );
 
+import path from 'path';
+
 // 3. Request Body Parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 4. Request Logging in Development
+// 4. Statically serve uploaded submission files
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+// 5. Request Logging in Development
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
