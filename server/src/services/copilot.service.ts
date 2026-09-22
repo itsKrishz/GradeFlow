@@ -572,42 +572,116 @@ async function handleCreateAssignmentQuery(
     select: { id: true, code: true, name: true },
   });
 
-  const matchedCourse = courses.find((c) => lowerQuery.includes(c.code.toLowerCase())) || courses[0];
+  // Extract Title / Topic ONLY if explicitly provided
+  let title: string | undefined = undefined;
+  const titlePatterns = [
+    /(?:called|titled|named)\s+["']?([^"'\n,.]+)["']?/i,
+    /(?:on|about|for)\s+["']?([^"'\n,.]+?)(?:\s+(?:for|due|with|in|of|worth)\s+|$|[,.])/i,
+    /assignment\s+["']([^"']+)["']/i,
+  ];
 
-  // Extract potential parameters
-  const hasDeadline =
-    lowerQuery.includes('oct') ||
-    lowerQuery.includes('pm') ||
-    lowerQuery.includes('deadline') ||
-    lowerQuery.includes('at');
-  const hasFileType = lowerQuery.includes('pdf') || lowerQuery.includes('sql') || lowerQuery.includes('zip');
-  const marksMatch = rawQuery.match(/(\d+)\s*(marks|pts|points)/i);
-  const totalMarks = marksMatch ? parseInt(marksMatch[1], 10) : lowerQuery.includes('20') ? 20 : undefined;
+  for (const pattern of titlePatterns) {
+    const match = rawQuery.match(pattern);
+    if (match && match[1]?.trim()) {
+      const candidate = match[1].trim();
+      if (!/^(a|an|the|my|this|new|some|me|students?)$/i.test(candidate) && candidate.length > 2) {
+        title = candidate;
+        break;
+      }
+    }
+  }
 
-  const title = lowerQuery.includes('normalization')
-    ? 'DBMS Normalization & Schema Design'
-    : lowerQuery.includes('b-tree') || lowerQuery.includes('indexing')
-    ? 'B-Tree & Hash Indexing Implementation'
-    : 'Database Schema & Query Optimization';
+  // Check specific academic topic keywords only if relevant
+  if (!title) {
+    if (lowerQuery.includes('normalization')) {
+      title = 'Database Normalization & Schema Design';
+    } else if (lowerQuery.includes('b-tree') || lowerQuery.includes('b+ tree') || lowerQuery.includes('indexing')) {
+      title = 'B+ Tree Indexing Implementation';
+    } else if (lowerQuery.includes('concurrency') || lowerQuery.includes('transaction')) {
+      title = 'Transaction Processing & Concurrency Control';
+    }
+  }
+
+  // Extract Course ONLY if explicitly mentioned
+  let matchedCourse: { id: string; code: string; name: string } | undefined = undefined;
+  for (const c of courses) {
+    if (
+      lowerQuery.includes(c.code.toLowerCase()) ||
+      lowerQuery.includes(c.name.toLowerCase())
+    ) {
+      matchedCourse = c;
+      break;
+    }
+  }
+  if (!matchedCourse) {
+    if (lowerQuery.includes('dbms') || lowerQuery.includes('database')) {
+      matchedCourse = courses.find(
+        (c) =>
+          c.name.toLowerCase().includes('database') ||
+          c.code.toLowerCase().includes('cs301') ||
+          c.code.toLowerCase().includes('2004')
+      );
+    } else if (lowerQuery.includes('operating') || lowerQuery.includes('os')) {
+      matchedCourse = courses.find(
+        (c) =>
+          c.name.toLowerCase().includes('operating') ||
+          c.code.toLowerCase().includes('cs302')
+      );
+    }
+  }
+
+  // Extract Deadline using real date/time tokens (never match "at" in "create")
+  let deadlineStr: string | undefined = undefined;
+  const dateMatch =
+    rawQuery.match(
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?/i
+    ) ||
+    rawQuery.match(
+      /\b(?:due|deadline)\s+(?:on\s+|by\s+|is\s+|at\s+)?([A-Za-z0-9\s,:]+?)(?:\s+(?:for|with|worth|marks)|$|[,.])/i
+    );
+
+  if (dateMatch && dateMatch[0]) {
+    deadlineStr = dateMatch[0].trim();
+  }
+
+  // Extract File Types
+  let fileTypeStr: string | undefined = undefined;
+  if (/\bpdf\b/i.test(rawQuery)) fileTypeStr = 'PDF only (.pdf)';
+  else if (/\bsql\b/i.test(rawQuery)) fileTypeStr = 'SQL scripts (.sql)';
+  else if (/\bzip\b/i.test(rawQuery)) fileTypeStr = 'ZIP archive (.zip)';
+  else if (/\b(python|py)\b/i.test(rawQuery)) fileTypeStr = 'Python script (.py)';
+
+  // Extract Total Marks
+  let totalMarks: number | undefined = undefined;
+  const marksMatch = rawQuery.match(/\b(\d+)\s*(?:marks|pts|points)\b/i);
+  if (marksMatch) {
+    totalMarks = parseInt(marksMatch[1], 10);
+  }
 
   // Check if critical details are present
-  const isComplete = hasDeadline && hasFileType && !!totalMarks;
+  const isComplete = !!title && !!matchedCourse && !!deadlineStr && !!fileTypeStr && !!totalMarks;
 
   if (!isComplete) {
     const missing: string[] = [];
-    if (!hasDeadline) missing.push('Deadline');
-    if (!hasFileType) missing.push('Allowed file type');
+    if (!title) missing.push('Assignment Title / Topic');
+    if (!matchedCourse) missing.push('Course');
+    if (!deadlineStr) missing.push('Deadline');
+    if (!fileTypeStr) missing.push('Allowed file type');
     if (!totalMarks) missing.push('Total marks');
 
+    const headingText = title
+      ? `I can help you create the assignment "${title}", but I need a few more details first:`
+      : `I'd be glad to help you create an assignment! What topic or title would you like it to have? Please provide the missing details below (all at once or one at a time):`;
+
     return {
-      text: `I can create the assignment "${title}", but I need a few details first.\n\nYou can provide them all at once or one at a time:`,
+      text: headingText,
       missingFieldsPrompt: {
         requiredFields: missing,
         collectedFields: {
-          Title: title,
+          Title: title || 'Pending',
           Course: matchedCourse ? `${matchedCourse.name} (${matchedCourse.code})` : 'Pending',
-          Deadline: hasDeadline ? 'October 5 at 11:59 PM' : 'Pending',
-          'File Type': hasFileType ? 'PDF only' : 'Pending',
+          Deadline: deadlineStr || 'Pending',
+          'File Type': fileTypeStr || 'Pending',
           'Total Marks': totalMarks ? `${totalMarks} marks` : 'Pending',
         },
       },
@@ -620,12 +694,12 @@ async function handleCreateAssignmentQuery(
     prompt: rawQuery,
     teacherId,
     courseId: matchedCourse?.id,
-    totalMarks: totalMarks || 20,
+    totalMarks: totalMarks,
     title,
   });
 
   return {
-    text: 'I have generated the assignment draft with structured evaluation rubrics. Please review the preview below before confirming:',
+    text: `I have generated the assignment draft for "${draft.title}" with structured evaluation rubrics. Please review the preview below before confirming:`,
     toolExecution: {
       actionName: 'Preparing assignment...',
       steps: [

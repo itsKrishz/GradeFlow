@@ -114,9 +114,14 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
           setIsTyping(false);
 
           if (data.missingFieldsPrompt) {
+            const rawTitle = data.missingFieldsPrompt.collectedFields?.Title;
+            const validTitle = rawTitle && rawTitle !== 'Pending' ? rawTitle : undefined;
+            const rawCourse = data.missingFieldsPrompt.collectedFields?.Course;
+            const validCourse = rawCourse && rawCourse !== 'Pending' ? rawCourse : undefined;
             setAssignmentDraftState({
               stage: 'missing_details',
-              title: data.missingFieldsPrompt.collectedFields?.Title || 'New Assignment',
+              title: validTitle,
+              courseName: validCourse,
             });
           } else if (data.assignmentDraft) {
             setAssignmentDraftState({
@@ -158,34 +163,58 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
         // Teacher is supplying missing information
         let newDraft = { ...assignmentDraftState };
 
-        // Check if deadline mentioned
-        if (lower.includes('oct') || lower.includes('pm') || lower.includes('deadline') || lower.includes('at')) {
+        // Check if title mentioned
+        if (!newDraft.title) {
+          const titleMatch = text.match(/(?:title|topic|called|named|about|on)\s*[:=]?\s*["']?([^"'\n,]+)["']?/i);
+          if (titleMatch && titleMatch[1]) {
+            newDraft.title = titleMatch[1].trim();
+          } else if (!text.includes(':') && text.length < 60 && !lower.includes('mark') && !lower.includes('pdf') && !lower.includes('due') && !lower.includes('pm')) {
+            newDraft.title = text.trim();
+          }
+        }
+
+        // Check if deadline mentioned (using word boundaries, never match "at" in "create")
+        if (/\b(oct|nov|dec|jan|feb|mar|apr|may|jun|jul|aug|sep|deadline|due|tomorrow|friday|monday)\b/i.test(lower)) {
           newDraft.deadlineDate = '2026-10-05';
           newDraft.deadlineTime = '23:59';
         }
         // Check if file type mentioned
         if (lower.includes('pdf')) {
           newDraft.allowedTypes = ['.pdf'];
+        } else if (lower.includes('sql')) {
+          newDraft.allowedTypes = ['.sql'];
+        } else if (lower.includes('zip')) {
+          newDraft.allowedTypes = ['.zip'];
         }
         // Check if marks mentioned
-        const marksMatch = text.match(/(\d+)\s*(marks|pts|points)/i) || text.match(/20/);
+        const marksMatch = text.match(/(\d+)\s*(marks|pts|points)/i);
         if (marksMatch) {
+          newDraft.totalMarks = parseInt(marksMatch[1], 10);
+        } else if (lower.includes('20 marks') || lower.includes('20 pts')) {
           newDraft.totalMarks = 20;
         }
         // Check if course mentioned if not set
-        if (!newDraft.courseCode && (lower.includes('dbms') || lower.includes('cse2004'))) {
-          newDraft.courseCode = 'CSE2004';
-          newDraft.courseName = 'Database Management Systems';
-          newDraft.courseId = courses[0]?.id || 'course-1';
+        if (!newDraft.courseCode) {
+          const matched = courses.find(c => lower.includes(c.code.toLowerCase()) || lower.includes(c.name.toLowerCase()));
+          if (matched) {
+            newDraft.courseCode = matched.code;
+            newDraft.courseName = matched.name;
+            newDraft.courseId = matched.id;
+          } else if (lower.includes('dbms') || lower.includes('database') || lower.includes('cs301') || lower.includes('cse2004')) {
+            newDraft.courseCode = courses[0]?.code || 'CS301';
+            newDraft.courseName = courses[0]?.name || 'Database Management Systems';
+            newDraft.courseId = courses[0]?.id || 'course-1';
+          }
         }
 
         // Check if all fields are collected
+        const hasTitle = !!newDraft.title;
         const hasCourse = !!newDraft.courseCode;
         const hasDeadline = !!newDraft.deadlineDate;
         const hasFileType = !!newDraft.allowedTypes?.length;
         const hasMarks = !!newDraft.totalMarks;
 
-        if (hasCourse && hasDeadline && hasFileType && hasMarks) {
+        if (hasTitle && hasCourse && hasDeadline && hasFileType && hasMarks) {
           // Transition to rubric query
           setAssignmentDraftState({
             ...newDraft,
@@ -197,13 +226,14 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
             {
               id: `ai-${Date.now()}`,
               sender: 'assistant',
-              text: 'Got it! I have saved the details for DBMS Normalization (Due Oct 5, 11:59 PM • PDF only • 20 marks).\n\nWould you like me to create the rubric automatically based on standard academic criteria, or would you like to specify custom criteria?',
+              text: `Got it! I have saved all required details for "${newDraft.title}" (${newDraft.courseCode} • Due ${newDraft.deadlineDate} at ${newDraft.deadlineTime} • ${newDraft.allowedTypes?.join(', ')} • ${newDraft.totalMarks} marks).\n\nWould you like me to synthesize the evaluation rubrics automatically, or would you like to specify custom criteria?`,
               timestamp: 'Just now'
             }
           ]);
         } else {
           // Still missing some information
           const missing: string[] = [];
+          if (!hasTitle) missing.push('Assignment Title / Topic');
           if (!hasCourse) missing.push('Course');
           if (!hasDeadline) missing.push('Deadline');
           if (!hasFileType) missing.push('Allowed file type');
@@ -216,15 +246,16 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
             {
               id: `ai-${Date.now()}`,
               sender: 'assistant',
-              text: `I've noted that. I still need the following information to finish preparing the assignment:`,
+              text: `I've noted that. I still need the following information to finish preparing "${newDraft.title || 'the assignment'}":`,
               timestamp: 'Just now',
               missingFieldsPrompt: {
                 requiredFields: missing,
                 collectedFields: {
-                  Course: newDraft.courseCode || 'Not provided',
-                  Deadline: newDraft.deadlineDate ? `${newDraft.deadlineDate} ${newDraft.deadlineTime}` : 'Not provided',
-                  'File Type': newDraft.allowedTypes?.join(', ') || 'Not provided',
-                  'Total Marks': newDraft.totalMarks ? `${newDraft.totalMarks} marks` : 'Not provided'
+                  Title: newDraft.title || 'Pending',
+                  Course: newDraft.courseCode ? `${newDraft.courseName} (${newDraft.courseCode})` : 'Pending',
+                  Deadline: newDraft.deadlineDate ? `${newDraft.deadlineDate} ${newDraft.deadlineTime}` : 'Pending',
+                  'File Type': newDraft.allowedTypes?.join(', ') || 'Pending',
+                  'Total Marks': newDraft.totalMarks ? `${newDraft.totalMarks} marks` : 'Pending'
                 }
               }
             }
@@ -360,34 +391,60 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
       if (
         lower.includes('create an assignment') || 
         lower.includes('create assignment') || 
+        lower.includes('draft assignment') ||
         lower.includes('create a dbms assignment')
       ) {
-        const title = lower.includes('normalization') ? 'Normalization' : 'Database Schema Design';
-        const hasDbms = lower.includes('dbms');
+        // Extract Title / Topic ONLY if explicitly provided
+        let title: string | undefined = undefined;
+        const titlePatterns = [
+          /(?:called|titled|named)\s+["']?([^"'\n,.]+)["']?/i,
+          /(?:on|about|for)\s+["']?([^"'\n,.]+?)(?:\s+(?:for|due|with|in|of|worth)\s+|$|[,.])/i,
+        ];
+        for (const pattern of titlePatterns) {
+          const match = text.match(pattern);
+          if (match && match[1]?.trim()) {
+            const candidate = match[1].trim();
+            if (!/^(a|an|the|my|this|new|some|me|students?)$/i.test(candidate) && candidate.length > 2) {
+              title = candidate;
+              break;
+            }
+          }
+        }
+        if (!title && lower.includes('normalization')) {
+          title = 'Database Normalization & Schema Design';
+        }
+
+        const hasDbms = lower.includes('dbms') || lower.includes('database');
 
         setAssignmentDraftState({
           stage: 'missing_details',
-          title,
-          courseCode: hasDbms ? 'CSE2004' : undefined,
-          courseName: hasDbms ? 'Database Management Systems' : undefined,
+          title: title,
+          courseCode: hasDbms ? 'CS301' : undefined,
+          courseName: hasDbms ? 'Database Engineering & Relational Design' : undefined,
           courseId: hasDbms ? courses[0]?.id || 'course-1' : undefined
         });
 
-        const missingFields = ['Deadline', 'Allowed file type', 'Total marks'];
-        if (!hasDbms) missingFields.unshift('Course');
+        const missingFields: string[] = [];
+        if (!title) missingFields.push('Assignment Title / Topic');
+        if (!hasDbms) missingFields.push('Course');
+        missingFields.push('Deadline', 'Allowed file type', 'Total marks');
+
+        const headingText = title
+          ? `I can help you create the assignment "${title}", but I need a few more details first:`
+          : `I'd be glad to help you create an assignment! What topic or title would you like it to have? Please provide the missing details below (all at once or one at a time):`;
 
         setMessages(prev => [
           ...prev,
           {
             id: `ai-${Date.now()}`,
             sender: 'assistant',
-            text: `I can create that assignment called "${title}", but I need a few details first.\n\nYou can provide them all at once or one at a time:`,
+            text: headingText,
             timestamp: 'Just now',
             missingFieldsPrompt: {
               requiredFields: missingFields,
               collectedFields: {
-                Title: title,
-                Course: hasDbms ? 'Database Management Systems (CSE2004)' : 'Not specified yet',
+                Title: title || 'Pending',
+                Course: hasDbms ? 'Database Engineering & Relational Design (CS301)' : 'Pending',
                 Deadline: 'Pending',
                 'Allowed file type': 'Pending',
                 'Total marks': 'Pending'
@@ -746,10 +803,10 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
 
                   <div className="pt-2 flex flex-wrap gap-1.5">
                     <button
-                      onClick={() => processQuery('DBMS, October 5 at 11:59 PM, PDF only, 20 marks.')}
+                      onClick={() => processQuery('B-Tree Indexing for CS301, October 5 at 11:59 PM, PDF only, 50 marks.')}
                       className="px-2.5 py-1 text-[11px] font-semibold bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
                     >
-                      "DBMS, October 5 at 11:59 PM, PDF only, 20 marks."
+                      "B-Tree Indexing for CS301, October 5 at 11:59 PM, PDF only, 50 marks."
                     </button>
                   </div>
                 </div>
