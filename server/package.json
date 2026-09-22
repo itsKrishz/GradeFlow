@@ -11,7 +11,8 @@
     "db:generate": "prisma generate",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "test:auth": "ts-node test-auth.ts"
+    "test:auth": "ts-node test-auth.ts",
+    "test:academic": "ts-node test-academic-api.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

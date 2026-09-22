@@ -92,9 +92,15 @@ app.get('/api/v1', (_req: Request, res: Response) => {
 });
 
 import authRoutes from './routes/auth.routes';
+import coursesRoutes from './routes/courses.routes';
+import assignmentsRoutes from './routes/assignments.routes';
+import submissionsRoutes from './routes/submissions.routes';
 
 // 7. Route Modules
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/courses', coursesRoutes);
+app.use('/api/v1/assignments', assignmentsRoutes);
+app.use('/api/v1/submissions', submissionsRoutes);
 
 // 8. 404 Catch-All Handler (for routes that do not exist)
 app.use((req: Request, res: Response) => {
