@@ -6,12 +6,25 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
   },
-  "keywords": ["gradeflow", "education", "grading", "evaluation"],
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "keywords": [
+    "gradeflow",
+    "education",
+    "grading",
+    "evaluation"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^6.4.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
@@ -24,6 +37,8 @@
     "@types/express": "^5.0.0",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.13.9",
+    "prisma": "^6.4.1",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.2"
   }

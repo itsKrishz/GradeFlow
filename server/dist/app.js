@@ -38,14 +38,36 @@ app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
 if (process.env.NODE_ENV !== 'test') {
     app.use((0, morgan_1.default)('dev'));
 }
-// 5. System Health Check Endpoint
-app.get('/health', (_req, res) => {
-    res.status(200).json({
-        status: 'ok',
-        service: 'GradeFlow API Gateway',
-        timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
-    });
+const prisma_1 = __importDefault(require("./lib/prisma"));
+// 5. System & Database Health Check Endpoint
+app.get('/health', async (_req, res) => {
+    try {
+        const start = Date.now();
+        await prisma_1.default.$queryRaw `SELECT 1`;
+        const dbLatencyMs = Date.now() - start;
+        res.status(200).json({
+            status: 'ok',
+            service: 'GradeFlow API Gateway',
+            database: {
+                status: 'connected',
+                latencyMs: dbLatencyMs,
+                provider: 'postgresql'
+            },
+            timestamp: new Date().toISOString(),
+            environment: process.env.NODE_ENV || 'development'
+        });
+    }
+    catch (error) {
+        res.status(503).json({
+            status: 'degraded',
+            service: 'GradeFlow API Gateway',
+            database: {
+                status: 'disconnected',
+                error: error.message
+            },
+            timestamp: new Date().toISOString()
+        });
+    }
 });
 // 6. Base API v1 Welcome Route
 app.get('/api/v1', (_req, res) => {

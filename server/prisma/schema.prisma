@@ -1,0 +1,207 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User roles in GradeFlow
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+// Processing pipeline states for asynchronous submission handling
+enum ProcessingState {
+  PENDING
+  EXTRACTING
+  SIMILARITY_CHECK
+  AI_EVALUATION
+  COMPLETED
+  FAILED
+}
+
+// Overall submission grading status
+enum SubmissionStatus {
+  SUBMITTED
+  EVALUATING
+  GRADED
+  FLAGGED
+}
+
+// Assignment lifecycle
+enum AssignmentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// Notification types
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @default("pbkdf2_placeholder")
+  name         String
+  role         Role     @default(STUDENT)
+  department   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  taughtCourses Course[]           @relation("TeacherCourses")
+  enrollments   CourseEnrollment[]
+  submissions   Submission[]
+  evaluations   Evaluation[]       @relation("EvaluatedBy")
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Course {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  name       String
+  semester   String
+  department String   @default("Computer Science")
+  teacherId  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  teacher     User               @relation("TeacherCourses", fields: [teacherId], references: [id], onDelete: Cascade)
+  enrollments CourseEnrollment[]
+  assignments Assignment[]
+
+  @@map("courses")
+}
+
+model CourseEnrollment {
+  id         String   @id @default(uuid())
+  courseId   String
+  studentId  String
+  enrolledAt DateTime @default(now())
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+  @@map("course_enrollments")
+}
+
+model Assignment {
+  id                String           @id @default(uuid())
+  courseId          String
+  title             String
+  description       String           @db.Text
+  dueDate           DateTime
+  dueTime           String           @default("23:59")
+  totalMarks        Int              @default(100)
+  acceptedFileTypes String[]         @default(["pdf", "sql", "zip"])
+  status            AssignmentStatus @default(PUBLISHED)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // Relations
+  course         Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  rubricCriteria RubricCriterion[]
+  submissions    Submission[]
+
+  @@map("assignments")
+}
+
+model RubricCriterion {
+  id           String @id @default(uuid())
+  assignmentId String
+  title        String
+  description  String @db.Text
+  maxMarks     Int
+  orderIndex   Int    @default(0)
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@map("rubric_criteria")
+}
+
+model Submission {
+  id              String           @id @default(uuid())
+  assignmentId    String
+  studentId       String
+  fileName        String
+  fileSize        String
+  fileUrl         String?
+  fileText        String?          @db.Text
+  status          SubmissionStatus @default(SUBMITTED)
+  processingState ProcessingState  @default(COMPLETED)
+  submittedAt     DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  assignment       Assignment        @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student          User              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  evaluation       Evaluation?
+  similarityReport SimilarityReport?
+
+  @@unique([assignmentId, studentId])
+  @@map("submissions")
+}
+
+model Evaluation {
+  id           String   @id @default(uuid())
+  submissionId String   @unique
+  evaluatorId  String
+  totalScore   Float
+  percentage   Float
+  grade        String
+  feedback     String   @db.Text
+  rubricScores Json
+  aiAssisted   Boolean  @default(true)
+  published    Boolean  @default(true)
+  evaluatedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  evaluator  User       @relation("EvaluatedBy", fields: [evaluatorId], references: [id], onDelete: Cascade)
+
+  @@map("evaluations")
+}
+
+model SimilarityReport {
+  id            String   @id @default(uuid())
+  submissionId  String   @unique
+  overallScore  Float
+  threshold     Float    @default(30.0)
+  flagged       Boolean  @default(false)
+  matchedSource String?
+  matchedChunks Json?
+  createdAt     DateTime @default(now())
+
+  // Relations
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("similarity_reports")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  title     String
+  message   String           @db.Text
+  type      NotificationType @default(INFO)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
