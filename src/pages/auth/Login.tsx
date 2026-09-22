@@ -13,35 +13,46 @@ export const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setIsLoading(true);
 
-    const success = login(username, password);
-    if (success) {
-      const clean = username.trim().toLowerCase();
-      if (clean === 'student' || clean.includes('student')) {
-        navigate('/student/dashboard');
-      } else if (clean === 'admin' || clean.includes('admin')) {
-        navigate('/admin/dashboard');
+    try {
+      const success = await login(username, password);
+      if (success) {
+        const clean = username.trim().toLowerCase();
+        if (clean === 'student' || clean.includes('student')) {
+          navigate('/student/dashboard');
+        } else if (clean === 'admin' || clean.includes('admin')) {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/teacher/dashboard');
+        }
       } else {
-        navigate('/teacher/dashboard');
+        setErrorMessage('Invalid username or password. Please verify your academic credentials.');
       }
-    } else {
-      setErrorMessage('Invalid username or password. Please verify your academic credentials.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleQuickLogin = (role: Role, demoUser: string, demoPass: string) => {
+  const handleQuickLogin = async (role: Role, demoUser: string, demoPass: string) => {
     setUsername(demoUser);
     setPassword(demoPass);
     setErrorMessage(null);
-    const success = login(demoUser, demoPass, role);
-    if (success) {
-      if (role === 'student') navigate('/student/dashboard');
-      else if (role === 'admin') navigate('/admin/dashboard');
-      else navigate('/teacher/dashboard');
+    setIsLoading(true);
+    try {
+      const success = await login(demoUser, demoPass, role);
+      if (success) {
+        if (role === 'student') navigate('/student/dashboard');
+        else if (role === 'admin') navigate('/admin/dashboard');
+        else navigate('/teacher/dashboard');
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -145,10 +156,20 @@ export const Login: React.FC = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 border border-transparent rounded-md text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors shadow-sm"
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 border border-transparent rounded-md text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
-              <span>Sign In to GradeFlow</span>
-              <ArrowRight className="w-4 h-4" />
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Authenticating...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In to GradeFlow</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
 

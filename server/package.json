@@ -12,7 +12,8 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "test:auth": "ts-node test-auth.ts",
-    "test:academic": "ts-node test-academic-api.ts"
+    "test:academic": "ts-node test-academic-api.ts",
+    "test:evaluations": "ts-node test-evaluations-api.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

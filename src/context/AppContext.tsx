@@ -21,6 +21,7 @@ import {
   mockEnrolledStudents,
   mockNotifications
 } from '../data/mockData';
+import { api } from '../services/api';
 
 interface ToastMessage {
   id: string;
@@ -36,7 +37,7 @@ interface AppContextType {
   // Auth / Current User
   currentUser: User;
   switchRole: (role: Role) => void;
-  login: (identifier: string, password?: string, roleOverride?: Role) => boolean;
+  login: (identifier: string, password?: string, roleOverride?: Role) => Promise<boolean>;
   logout: () => void;
 
   // Courses
@@ -126,13 +127,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const login = (identifier: string, password?: string, roleOverride?: Role): boolean => {
+  const login = async (identifier: string, password?: string, roleOverride?: Role): Promise<boolean> => {
     const cleanId = identifier.trim().toLowerCase();
-    
-    // Exact credential rules specified:
-    // admin: admin / admin123
-    // teacher: teacher / teacher123
-    // student: student / student123
+
+    // 1. Try live PostgreSQL backend first
+    if (password) {
+      try {
+        const res = await api.auth.login(cleanId, password);
+        if (res && res.success && res.user) {
+          const mappedRole = res.user.role.toLowerCase() as Role;
+          const userObj: User = {
+            id: res.user.id,
+            name: res.user.name,
+            username: res.user.username || cleanId,
+            email: res.user.email,
+            role: mappedRole,
+            department: res.user.department || 'Computer Science',
+            status: 'Active',
+            avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
+          };
+          setCurrentUser(userObj);
+          localStorage.setItem('gradeflow_current_role', userObj.role);
+          showToast(`Welcome back, ${userObj.name} (Live PostgreSQL Backend)`, 'success');
+          return true;
+        }
+      } catch (err: any) {
+        if (err?.status === 401) {
+          showToast('Invalid username or password. Please verify your credentials.', 'error');
+          return false;
+        }
+        console.warn('Backend unavailable, falling back to local credentials:', err.message);
+      }
+    }
+
+    // 2. Fallback to mock credentials if backend is offline or dev mode
     const credentials: Record<string, { role: Role; pwd: string; userId: string }> = {
       admin: { role: 'admin', pwd: 'admin123', userId: 'user-3' },
       'admin@gradeflow.edu': { role: 'admin', pwd: 'admin123', userId: 'user-3' },
@@ -173,6 +201,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
+    api.auth.logout();
     setCurrentUser(mockUsers[0]);
     localStorage.removeItem('gradeflow_current_role');
     showToast('Logged out successfully', 'info');
