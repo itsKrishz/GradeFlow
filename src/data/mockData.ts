@@ -34,6 +34,18 @@ export const mockUsers: User[] = [
     department: 'Academic Affairs',
     status: 'Active',
     avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80'
+  },
+  {
+    id: 'user-stu-3',
+    name: 'Arjun Nair',
+    username: 'student2',
+    email: 'student2@gradeflow.edu',
+    role: 'student',
+    title: 'Undergraduate Student',
+    department: 'Computer Science & Engineering',
+    regNo: 'CSE-2024-031',
+    status: 'Active',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
   }
 ];
 

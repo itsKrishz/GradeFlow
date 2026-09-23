@@ -168,7 +168,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'teacher@gradeflow.edu': { role: 'teacher', pwd: 'teacher123', userId: 'user-1' },
       student: { role: 'student', pwd: 'student123', userId: 'user-2' },
       'rahul.k@student.edu': { role: 'student', pwd: 'student123', userId: 'user-2' },
-      'student@gradeflow.edu': { role: 'student', pwd: 'student123', userId: 'user-2' }
+      'student@gradeflow.edu': { role: 'student', pwd: 'student123', userId: 'user-2' },
+      student2: { role: 'student', pwd: 'student123', userId: 'user-stu-3' },
+      'student2@gradeflow.edu': { role: 'student', pwd: 'student123', userId: 'user-stu-3' },
+      'arjun.n@student.edu': { role: 'student', pwd: 'student123', userId: 'user-stu-3' }
     };
 
     const cred = credentials[cleanId];

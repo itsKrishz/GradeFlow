@@ -213,4 +213,41 @@ export interface CopilotMessage {
     lateCount: number;
     courses: { name: string; count: number }[];
   };
+  studentReport?: CopilotStudentReport;
 }
+
+export interface CopilotStudentReport {
+  studentName: string;
+  regNo?: string;
+  email?: string;
+  department?: string;
+  courseName: string;
+  courseCode: string;
+  assignmentTitle: string;
+  submissionDate?: string;
+  fileName?: string;
+  status: string;
+  score?: number;
+  totalMarks?: number;
+  percentage?: number;
+  grade?: string;
+  feedback?: string;
+  rubricScores?: Array<{
+    criterionTitle: string;
+    score: number;
+    maxMarks: number;
+    comment?: string;
+  }>;
+  similarity?: {
+    score: number;
+    threshold?: number;
+    flagged: boolean;
+    matchedSource: string | null;
+    matchedChunks?: Array<{
+      submissionSnippet: string;
+      sourceSnippet: string;
+      similarity: number;
+    }>;
+  };
+}
+

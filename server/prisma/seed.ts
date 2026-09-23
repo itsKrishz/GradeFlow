@@ -69,6 +69,17 @@ async function main() {
     },
   });
 
+  const studentArjun = await prisma.user.create({
+    data: {
+      username: 'student2',
+      email: 'student2@gradeflow.edu',
+      passwordHash: studentPasswordHash,
+      name: 'Arjun Nair',
+      role: Role.STUDENT,
+      department: 'Computer Science & Engineering',
+    },
+  });
+
   const admin = await prisma.user.create({
     data: {
       username: 'admin',
@@ -80,7 +91,7 @@ async function main() {
     },
   });
 
-  console.log(`👤 Seeded 5 Users (${teacher.name}, ${studentAlex.name}, ${studentJordan.name}, ${studentSophia.name}, ${admin.name}).`);
+  console.log(`👤 Seeded 6 Users (${teacher.name}, ${studentAlex.name}, ${studentJordan.name}, ${studentSophia.name}, ${studentArjun.name}, ${admin.name}).`);
 
   // 3. Seed Courses
   const dbCourse = await prisma.course.create({
@@ -121,6 +132,7 @@ async function main() {
       { courseId: dbCourse.id, studentId: studentAlex.id },
       { courseId: dbCourse.id, studentId: studentJordan.id },
       { courseId: dbCourse.id, studentId: studentSophia.id },
+      { courseId: dbCourse.id, studentId: studentArjun.id },
       { courseId: dsaCourse.id, studentId: studentAlex.id },
       { courseId: dsaCourse.id, studentId: studentJordan.id },
       { courseId: aiCourse.id, studentId: studentSophia.id },
@@ -301,7 +313,57 @@ async function main() {
     },
   });
 
-  console.log(`📄 Seeded 3 Submissions with Evaluations & Similarity Reports.`);
+  // Submission 4: Arjun Nair (Flagged with 42% Similarity Overlap for Plagiarism Demonstration)
+  const arjunSubmission = await prisma.submission.create({
+    data: {
+      assignmentId: assignment1.id,
+      studentId: studentArjun.id,
+      fileName: 'arjun_nair_db_a1.pdf',
+      fileSize: '4.1 MB',
+      fileUrl: '/uploads/sample_arjun.pdf',
+      status: SubmissionStatus.FLAGGED,
+      processingState: ProcessingState.COMPLETED,
+      submittedAt: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
+    },
+  });
+
+  await prisma.evaluation.create({
+    data: {
+      submissionId: arjunSubmission.id,
+      evaluatorId: teacher.id,
+      totalScore: 58.0,
+      percentage: 58.0,
+      grade: 'D',
+      feedback:
+        'Significant overlap detected in 3NF canonical cover derivation matching Fall 2025 archive. Please see instructor during office hours.',
+      rubricScores: [
+        { criterionTitle: 'Schema Correctness & Key Constraints', score: 22, maxMarks: 35, comment: 'Functional but standard structure.' },
+        { criterionTitle: '3NF Decomposition & Normalization Proof', score: 14, maxMarks: 35, comment: 'Proofs match archived repository verbatim.' },
+        { criterionTitle: 'SQL DDL Execution & Index Optimization', score: 22, maxMarks: 30, comment: 'Basic queries without explain plan analysis.' },
+      ],
+      aiAssisted: true,
+      published: false,
+    },
+  });
+
+  await prisma.similarityReport.create({
+    data: {
+      submissionId: arjunSubmission.id,
+      overallScore: 42.0,
+      threshold: 30.0,
+      flagged: true,
+      matchedSource: 'Fall 2025 Archive & GitHub coursework',
+      matchedChunks: [
+        {
+          submissionSnippet: 'Algorithm 3.2: Compute the canonical cover Fc of F. For each functional dependency X -> Y in Fc...',
+          sourceSnippet: 'Algorithm 3.2: Compute the canonical cover Fc of F. For each functional dependency X -> Y in Fc...',
+          similarity: 94,
+        },
+      ],
+    },
+  });
+
+  console.log(`📄 Seeded 4 Submissions with Evaluations & Similarity Reports.`);
 
   // 7. Seed Notifications
   await prisma.notification.createMany({

@@ -29,17 +29,7 @@ export const AppLayout: React.FC = () => {
           <Outlet />
         </main>
 
-        {/* Floating Copilot Launcher Button for Teacher */}
-        {currentUser.role === 'teacher' && !isFullCopilotPage && !isCopilotOpen && (
-          <button
-            onClick={openCopilot}
-            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-indigo-500/25 transition-all text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-            title="Ask GradeFlow Copilot"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span className="hidden sm:inline">Copilot</span>
-          </button>
-        )}
+
       </div>
 
       {/* Global Slide-Over Copilot Drawer */}

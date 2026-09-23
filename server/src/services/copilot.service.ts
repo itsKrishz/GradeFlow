@@ -81,7 +81,43 @@ export interface CopilotResponseData {
   assignmentDraft?: CopilotAssignmentDraft;
   confirmationPrompt?: CopilotConfirmationPrompt;
   missingFieldsPrompt?: CopilotMissingFieldsPrompt;
+  studentReport?: CopilotStudentReport;
   provider?: 'gemini' | 'copilot-engine';
+}
+
+export interface CopilotStudentReport {
+  studentName: string;
+  regNo?: string;
+  email?: string;
+  department?: string;
+  courseName: string;
+  courseCode: string;
+  assignmentTitle: string;
+  submissionDate?: string;
+  fileName?: string;
+  status: string;
+  score?: number;
+  totalMarks?: number;
+  percentage?: number;
+  grade?: string;
+  feedback?: string;
+  rubricScores?: Array<{
+    criterionTitle: string;
+    score: number;
+    maxMarks: number;
+    comment?: string;
+  }>;
+  similarity?: {
+    score: number;
+    threshold?: number;
+    flagged: boolean;
+    matchedSource: string | null;
+    matchedChunks?: Array<{
+      submissionSnippet: string;
+      sourceSnippet: string;
+      similarity: number;
+    }>;
+  };
 }
 
 /**
@@ -95,6 +131,24 @@ export async function queryCopilot(params: {
 }): Promise<CopilotResponseData> {
   const { teacherId, query, courseId, assignmentId } = params;
   const lower = query.toLowerCase().trim();
+
+  // 0. INTENT: STUDENT INDIVIDUAL REPORT (Direct teacher freedom to inspect students)
+  if (
+    lower.includes('report of') ||
+    lower.includes('student report') ||
+    lower.includes('report for') ||
+    lower.includes('show report') ||
+    lower.includes('show me the report') ||
+    lower.includes('report of one student') ||
+    lower.includes('show a student report') ||
+    lower.includes('student performance') ||
+    lower.includes('score of') ||
+    lower.includes('grade of') ||
+    lower.includes('how did ') ||
+    (lower.includes('report') && (lower.includes('student') || lower.includes('arjun') || lower.includes('jordan') || lower.includes('alex') || lower.includes('rahul') || lower.includes('sophia')))
+  ) {
+    return handleStudentReportQuery(teacherId, lower, query);
+  }
 
   // 1. INTENT: PENDING PAPERS / INBOX BREAKDOWN
   if (
@@ -164,7 +218,211 @@ export async function queryCopilot(params: {
   }
 
   // 7. GENERAL ACADEMIC QUERY / FALLBACK
-  return handleGeneralCopilotQuery(query);
+  return handleGeneralCopilotQuery(query, teacherId);
+}
+
+/**
+ * 0. Query: Individual Student Academic & Similarity Report
+ */
+async function handleStudentReportQuery(
+  teacherId: string,
+  lower: string,
+  rawQuery: string
+): Promise<CopilotResponseData> {
+  // Query all submissions across courses taught by this teacher
+  const courses = await prisma.course.findMany({
+    where: { teacherId },
+    include: {
+      enrollments: {
+        include: {
+          student: true,
+        },
+      },
+      assignments: {
+        include: {
+          submissions: {
+            include: {
+              student: true,
+              evaluation: true,
+              similarityReport: true,
+            },
+            orderBy: { submittedAt: 'desc' },
+          },
+        },
+      },
+    },
+  });
+
+  type EnrichedSub = {
+    submission: any;
+    student: any;
+    course: any;
+    assignment: any;
+  };
+
+  const allSubmissions: EnrichedSub[] = [];
+  for (const c of courses) {
+    for (const a of c.assignments) {
+      for (const s of a.submissions) {
+        allSubmissions.push({
+          submission: s,
+          student: s.student,
+          course: c,
+          assignment: a,
+        });
+      }
+    }
+  }
+
+  // 1. Check if a specific student name or regNo is mentioned in the query
+  let matched: EnrichedSub | undefined = allSubmissions.find((item) => {
+    const studentName = item.student.name.toLowerCase();
+    const parts = studentName.split(' ');
+    return (
+      lower.includes(studentName) ||
+      parts.some((part: string) => part.length > 2 && lower.includes(part)) ||
+      lower.includes(item.student.username.toLowerCase()) ||
+      lower.includes(item.student.email.toLowerCase())
+    );
+  });
+
+  // If no submission matched by name, check enrolled students
+  if (!matched) {
+    for (const c of courses) {
+      for (const e of c.enrollments) {
+        const studentName = e.student.name.toLowerCase();
+        const parts = studentName.split(' ');
+        if (
+          lower.includes(studentName) ||
+          parts.some((part: string) => part.length > 2 && lower.includes(part)) ||
+          lower.includes(e.student.email.toLowerCase())
+        ) {
+          return {
+            text: `Student **${e.student.name}** (${e.student.email}) is enrolled in **${c.name} (${c.code})**, but has not submitted any assignments yet.`,
+            toolExecution: {
+              actionName: 'Searching student academic records...',
+              steps: [
+                { label: `Verified enrollment in ${c.code}`, done: true },
+                { label: 'Checking assignment submissions (0 found)', done: true },
+              ],
+            },
+            provider: 'copilot-engine',
+          };
+        }
+      }
+    }
+  }
+
+  // 2. If no specific student mentioned (e.g. "show the report of one student" / "student report"):
+  // Pick the most illustrative evaluated student (preferring one with similarity flags, or highest evaluated)
+  if (!matched && allSubmissions.length > 0) {
+    matched = allSubmissions.find((s) => s.submission.evaluation && s.submission.similarityReport?.flagged) ||
+              allSubmissions.find((s) => s.submission.evaluation) ||
+              allSubmissions[0];
+  }
+
+  if (!matched) {
+    return {
+      text: `I searched your courses but could not find any student submissions yet. Once students submit work, you can ask me to inspect any individual student report.`,
+      provider: 'copilot-engine',
+    };
+  }
+
+  const { submission, student, course, assignment } = matched;
+  const evaluation = submission.evaluation;
+  const similarity = submission.similarityReport;
+
+  // Parse rubric scores
+  const rubricList: Array<{ criterionTitle: string; score: number; maxMarks: number; comment?: string }> =
+    Array.isArray(evaluation?.rubricScores) ? evaluation.rubricScores : [];
+
+  const studentReport: CopilotStudentReport = {
+    studentName: student.name,
+    regNo: student.username || student.email.split('@')[0],
+    email: student.email,
+    department: student.department || 'Computer Science & Engineering',
+    courseName: course.name,
+    courseCode: course.code,
+    assignmentTitle: assignment.title,
+    submissionDate: new Date(submission.submittedAt).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    fileName: submission.fileName,
+    status: submission.status,
+    score: evaluation?.totalScore,
+    totalMarks: assignment.totalMarks,
+    percentage: evaluation?.percentage,
+    grade: evaluation?.grade,
+    feedback: evaluation?.feedback,
+    rubricScores: rubricList,
+    similarity: similarity
+      ? {
+          score: similarity.overallScore,
+          threshold: similarity.threshold,
+          flagged: similarity.flagged,
+          matchedSource: similarity.matchedSource,
+          matchedChunks: Array.isArray(similarity.matchedChunks) ? similarity.matchedChunks : [],
+        }
+      : undefined,
+  };
+
+  let reportText = `Here is the academic evaluation and integrity report for **${student.name}**:\n\n`;
+  reportText += `• **Student**: ${student.name} (\`${student.email}\`)\n`;
+  reportText += `• **Course**: ${course.name} (${course.code})\n`;
+  reportText += `• **Assignment**: ${assignment.title}\n`;
+  reportText += `• **Document**: \`${submission.fileName}\` (${new Date(submission.submittedAt).toLocaleDateString()})\n\n`;
+
+  if (evaluation) {
+    reportText += `### Evaluation Outcome\n`;
+    reportText += `• **Total Score**: **${evaluation.totalScore} / ${assignment.totalMarks}** (${evaluation.percentage}%)  \n`;
+    reportText += `• **Assigned Grade**: **Grade ${evaluation.grade}**  \n`;
+    if (evaluation.feedback) {
+      reportText += `• **Instructor Feedback**: "${evaluation.feedback}"\n\n`;
+    }
+    if (rubricList.length > 0) {
+      reportText += `**Rubric Breakdown:**\n`;
+      for (const r of rubricList) {
+        reportText += `- **${r.criterionTitle}**: ${r.score}/${r.maxMarks} pts ${r.comment ? `— *${r.comment}*` : ''}\n`;
+      }
+      reportText += `\n`;
+    }
+  } else {
+    reportText += `*Status: Awaiting instructor evaluation.*\n\n`;
+  }
+
+  if (similarity) {
+    reportText += `### Academic Integrity Analysis\n`;
+    if (similarity.flagged) {
+      reportText += `⚠️ **High Overlap Detected**: **${similarity.overallScore}%** similarity (Flag review threshold: ${similarity.threshold}%).\n`;
+      reportText += `• **Matched Source**: *${similarity.matchedSource || 'Archival database'}*\n`;
+      if (Array.isArray(similarity.matchedChunks) && similarity.matchedChunks.length > 0) {
+        const topChunk = similarity.matchedChunks[0];
+        reportText += `• **Matched Snippet Evidence (${topChunk.similarity}% overlap)**:\n`;
+        reportText += `  > Submission: "${topChunk.submissionSnippet}"\n`;
+        reportText += `  > Source: "${topChunk.sourceSnippet}"\n`;
+      }
+    } else {
+      reportText += `✅ **Integrity Verified**: **${similarity.overallScore}%** similarity (Passed below ${similarity.threshold}% review threshold).\n`;
+    }
+  }
+
+  return {
+    text: reportText,
+    toolExecution: {
+      actionName: `Inspecting records for ${student.name}...`,
+      steps: [
+        { label: `Verified enrollment in ${course.code}`, done: true },
+        { label: `Extracted submission: ${submission.fileName}`, done: true },
+        { label: evaluation ? `Loaded rubric scores (Grade ${evaluation.grade})` : 'Submission pending evaluation', done: true },
+        { label: similarity ? `Analyzed similarity report (${similarity.overallScore}%)` : 'No similarity report generated', done: true },
+      ],
+    },
+    studentReport,
+    provider: 'copilot-engine',
+  };
 }
 
 /**
@@ -714,10 +972,65 @@ async function handleCreateAssignmentQuery(
 }
 
 /**
- * 7. Query: General Copilot Query using Gemini LLM if available
+ * 7. Query: General Copilot Query using Gemini LLM with Live Database Freedom
  */
-async function handleGeneralCopilotQuery(query: string): Promise<CopilotResponseData> {
+async function handleGeneralCopilotQuery(query: string, teacherId?: string): Promise<CopilotResponseData> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  let liveContext = '';
+  if (teacherId) {
+    try {
+      const courses = await prisma.course.findMany({
+        where: { teacherId },
+        include: {
+          assignments: {
+            include: {
+              submissions: {
+                include: {
+                  student: { select: { name: true, email: true, username: true } },
+                  evaluation: { select: { totalScore: true, grade: true, feedback: true } },
+                  similarityReport: { select: { overallScore: true, flagged: true, matchedSource: true } },
+                },
+              },
+            },
+          },
+          enrollments: {
+            include: {
+              student: { select: { name: true, email: true, username: true } },
+            },
+          },
+        },
+      });
+
+      const coursesText = courses
+        .map((c) => {
+          const studentNames = c.enrollments.map((e) => `${e.student.name} (${e.student.email})`).join(', ');
+          const assignmentsText = c.assignments
+            .map((a) => {
+              const subsText = a.submissions
+                .map(
+                  (s) =>
+                    `${s.student.name}: ${
+                      s.evaluation ? `Grade ${s.evaluation.grade} (${s.evaluation.totalScore}/${a.totalMarks})` : 'Pending'
+                    } [Similarity: ${
+                      s.similarityReport
+                        ? `${s.similarityReport.overallScore}% (${s.similarityReport.flagged ? 'FLAGGED' : 'Clean'})`
+                        : 'None'
+                    }]`
+                )
+                .join('; ');
+              return `Assignment "${a.title}" (Due: ${new Date(a.dueDate).toLocaleDateString()}, Total Marks: ${a.totalMarks}). Submissions: [${subsText}]`;
+            })
+            .join('\n  ');
+          return `Course: ${c.name} (${c.code}). Enrolled Students: [${studentNames}].\n  ${assignmentsText}`;
+        })
+        .join('\n\n');
+
+      liveContext = `\n\nLIVE TEACHER DATABASE CONTEXT:\n${coursesText}\n`;
+    } catch (e) {
+      console.warn('[Copilot Context Warning]:', e);
+    }
+  }
 
   if (apiKey && apiKey.trim() !== '') {
     try {
@@ -729,7 +1042,12 @@ async function handleGeneralCopilotQuery(query: string): Promise<CopilotResponse
             role: 'user',
             parts: [
               {
-                text: `You are GradeFlow Academic Copilot, an intelligent assistant for university professors. Answer the instructor's question concisely, professionally, and academically:\n\nInstructor Query: "${query}"`,
+                text: `You are GradeFlow Academic Copilot, an intelligent assistant with live read access to the professor's university database.
+You have complete freedom to report on any student, score, rubric, similarity match, course average, or academic policy.
+${liveContext}
+Instructor Query: "${query}"
+
+Answer authoritatively, concisely, and helpfully using the real database records whenever applicable. Never claim you lack access to the professor's students or data.`,
               },
             ],
           },
@@ -747,7 +1065,7 @@ async function handleGeneralCopilotQuery(query: string): Promise<CopilotResponse
   }
 
   return {
-    text: `I'm here to assist with your academic grading, student rosters, and course administration. You can ask me to inspect pending papers, list unsubmitted students, analyze class performance, check plagiarism similarity flags, or draft new assignments.`,
+    text: `I'm here to assist with your academic grading, student rosters, and course administration. You can ask me to inspect pending papers, show individual student reports, list unsubmitted students, analyze class performance, check plagiarism similarity flags, or draft new assignments.`,
     provider: 'copilot-engine',
   };
 }

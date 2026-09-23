@@ -31,10 +31,13 @@ app.use((0, cors_1.default)({
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
+const path_1 = __importDefault(require("path"));
 // 3. Request Body Parsing
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
-// 4. Request Logging in Development
+// 4. Statically serve uploaded submission files
+app.use('/uploads', express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
+// 5. Request Logging in Development
 if (process.env.NODE_ENV !== 'test') {
     app.use((0, morgan_1.default)('dev'));
 }
@@ -85,7 +88,18 @@ app.get('/api/v1', (_req, res) => {
         }
     });
 });
-// 7. 404 Catch-All Handler (for routes that do not exist)
+const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const courses_routes_1 = __importDefault(require("./routes/courses.routes"));
+const assignments_routes_1 = __importDefault(require("./routes/assignments.routes"));
+const submissions_routes_1 = __importDefault(require("./routes/submissions.routes"));
+const evaluations_routes_1 = __importDefault(require("./routes/evaluations.routes"));
+// 7. Route Modules
+app.use('/api/v1/auth', auth_routes_1.default);
+app.use('/api/v1/courses', courses_routes_1.default);
+app.use('/api/v1/assignments', assignments_routes_1.default);
+app.use('/api/v1/submissions', submissions_routes_1.default);
+app.use('/api/v1/evaluations', evaluations_routes_1.default);
+// 8. 404 Catch-All Handler (for routes that do not exist)
 app.use((req, res) => {
     res.status(404).json({
         error: 'NotFound',

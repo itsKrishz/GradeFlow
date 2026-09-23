@@ -147,23 +147,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggleCollapse })
         })}
       </nav>
 
-      {/* Collapse/Expand Footer Toggle (Always visible in both states) */}
-      <div className="p-1.5 border-t border-academic-lightBorder dark:border-academic-darkBorder">
-        <button
-          onClick={onToggleCollapse}
-          className="w-full flex items-center justify-center gap-2 py-1 px-2 text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <>
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span className="text-[11px] font-medium text-slate-500">Minimize</span>
-            </>
-          )}
-        </button>
-      </div>
+
 
       {/* Bottom User Profile */}
       <div className="p-2 border-t border-academic-lightBorder dark:border-academic-darkBorder">

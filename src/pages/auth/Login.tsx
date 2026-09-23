@@ -178,11 +178,11 @@ export const Login: React.FC = () => {
             <p className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider text-center mb-3">
               One-Click Quick Login
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={() => handleQuickLogin('teacher', 'teacher', 'teacher123')}
-                className="flex flex-col items-center p-2.5 rounded-lg border border-slate-200 dark:border-zinc-800 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors text-center"
+                className="flex flex-col items-center p-2 rounded-lg border border-slate-200 dark:border-zinc-800 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors text-center"
               >
                 <UserCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mb-1" />
                 <span className="text-[11px] font-bold text-slate-800 dark:text-zinc-200">Teacher</span>
@@ -193,18 +193,33 @@ export const Login: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleQuickLogin('student', 'student', 'student123')}
-                className="flex flex-col items-center p-2.5 rounded-lg border border-slate-200 dark:border-zinc-800 hover:border-emerald-400 dark:hover:border-emerald-600 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors text-center"
+                className="flex flex-col items-center p-2 rounded-lg border border-slate-200 dark:border-zinc-800 hover:border-emerald-400 dark:hover:border-emerald-600 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors text-center"
               >
                 <GraduationCap className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mb-1" />
-                <span className="text-[11px] font-bold text-slate-800 dark:text-zinc-200">Student</span>
+                <span className="text-[11px] font-bold text-slate-800 dark:text-zinc-200">Student 1</span>
                 <span className="text-[9px] font-mono text-slate-500 dark:text-zinc-400 mt-0.5">student</span>
                 <span className="text-[8px] font-mono text-slate-400 dark:text-zinc-500">student123</span>
               </button>
 
               <button
                 type="button"
+                onClick={() => handleQuickLogin('student', 'student2', 'student123')}
+                className="flex flex-col items-center p-2 rounded-lg border border-rose-200 dark:border-rose-900/50 hover:border-rose-400 dark:hover:border-rose-600 hover:bg-rose-50/50 dark:hover:bg-rose-950/30 transition-colors text-center relative group"
+                title="Student with 42% flagged plagiarism report for detection demonstration"
+              >
+                <span className="absolute -top-1.5 -right-1 px-1 py-0.2 text-[8px] font-bold uppercase bg-rose-600 text-white rounded shadow-sm">
+                  Flagged
+                </span>
+                <GraduationCap className="w-4 h-4 text-rose-600 dark:text-rose-400 mb-1" />
+                <span className="text-[11px] font-bold text-slate-800 dark:text-zinc-200">Student 2</span>
+                <span className="text-[9px] font-mono text-slate-500 dark:text-zinc-400 mt-0.5">student2</span>
+                <span className="text-[8px] font-mono text-slate-400 dark:text-zinc-500">student123</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => handleQuickLogin('admin', 'admin', 'admin123')}
-                className="flex flex-col items-center p-2.5 rounded-lg border border-slate-200 dark:border-zinc-800 hover:border-purple-400 dark:hover:border-purple-600 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors text-center"
+                className="flex flex-col items-center p-2 rounded-lg border border-slate-200 dark:border-zinc-800 hover:border-purple-400 dark:hover:border-purple-600 hover:bg-slate-50 dark:hover:bg-zinc-800/60 transition-colors text-center"
               >
                 <ShieldCheck className="w-4 h-4 text-purple-600 dark:text-purple-400 mb-1" />
                 <span className="text-[11px] font-bold text-slate-800 dark:text-zinc-200">Admin</span>

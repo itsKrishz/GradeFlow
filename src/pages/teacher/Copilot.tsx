@@ -80,16 +80,7 @@ export const Copilot: React.FC = () => {
             </div>
           </div>
 
-          {/* Safe Academic Principles Guardrails */}
-          <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 rounded-lg space-y-1.5 text-xs">
-            <div className="font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5 text-[11px]">
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Academic Safeguards</span>
-            </div>
-            <p className="text-[11px] text-indigo-800 dark:text-indigo-300 leading-normal">
-              Copilot requires instructor confirmation for dangerous actions and never automatically publishes grades without teacher verification.
-            </p>
-          </div>
+
         </div>
 
         {/* Bottom Help */}

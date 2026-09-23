@@ -21,7 +21,9 @@ import {
   ShieldAlert,
   HelpCircle,
   RotateCcw,
-  Users
+  Users,
+  AlertCircle,
+  FileCheck2
 } from 'lucide-react';
 import { Badge } from '../common/Badge';
 
@@ -145,6 +147,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
               assignmentDraft: data.assignmentDraft,
               confirmationPrompt: data.confirmationPrompt,
               missingFieldsPrompt: data.missingFieldsPrompt,
+              studentReport: data.studentReport,
             }
           ]);
           return;
@@ -528,6 +531,89 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
                 assignmentTitle: 'Assignment 2 - B-Tree Indexing'
               }
             ]
+          }
+        ]);
+        return;
+      }
+
+      // --- QUERY 6B: INDIVIDUAL STUDENT REPORT ---
+      if (
+        lower.includes('report of') ||
+        lower.includes('student report') ||
+        lower.includes('report for') ||
+        lower.includes('show report') ||
+        lower.includes('show me the report') ||
+        lower.includes('report of one student') ||
+        lower.includes('show a student report') ||
+        lower.includes('student performance') ||
+        lower.includes('score of') ||
+        lower.includes('grade of') ||
+        lower.includes('how did ') ||
+        (lower.includes('report') && (lower.includes('student') || lower.includes('arjun') || lower.includes('rahul') || lower.includes('jordan') || lower.includes('alex')))
+      ) {
+        const isRahul = lower.includes('rahul') || lower.includes('alex');
+        const studentName = isRahul ? 'Rahul Kumar' : 'Arjun Nair';
+        const regNo = isRahul ? 'CSE-2024-042' : 'CSE-2024-031';
+        const email = isRahul ? 'rahul.k@student.edu' : 'student2@gradeflow.edu';
+        const score = isRahul ? 90 : 58;
+        const grade = isRahul ? 'A' : 'D';
+        const feedback = isRahul
+          ? 'Exceptional submission with precise functional dependency decomposition and optimal B-Tree index considerations.'
+          : 'High overlap detected in 3NF canonical cover proofs matching Fall 2025 archive. Please see instructor during office hours.';
+        const similarityScore = isRahul ? 8.5 : 42;
+        const flagged = !isRahul;
+
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `ai-${Date.now()}`,
+            sender: 'assistant',
+            text: `Here is the comprehensive academic report and similarity analysis for **${studentName}**:`,
+            timestamp: 'Just now',
+            toolExecution: {
+              actionName: `Inspecting records for ${studentName}...`,
+              steps: [
+                { label: 'Verified course enrollment in CSE2004', done: true },
+                { label: `Extracted submission: ${studentName.replace(' ', '_')}_DBMS_Project.pdf`, done: true },
+                { label: `Loaded rubric scores (Grade ${grade})`, done: true },
+                { label: `Analyzed similarity report (${similarityScore}%)`, done: true }
+              ]
+            },
+            studentReport: {
+              studentName,
+              regNo,
+              email,
+              department: 'Computer Science & Engineering',
+              courseName: 'Database Management Systems',
+              courseCode: 'CSE2004',
+              assignmentTitle: 'Assignment 1 — Relational Schema & 3NF Normalization',
+              submissionDate: 'Sep 15, 2026, 09:05 PM',
+              fileName: `${studentName.replace(' ', '_')}_DBMS_Project.pdf`,
+              status: flagged ? 'Flagged' : 'Graded',
+              score,
+              totalMarks: 100,
+              percentage: score,
+              grade,
+              feedback,
+              rubricScores: [
+                { criterionTitle: 'Schema Correctness & Key Constraints', score: isRahul ? 34 : 22, maxMarks: 35, comment: isRahul ? 'Clean constraints and keys.' : 'Functional but standard structure.' },
+                { criterionTitle: '3NF Decomposition & Normalization Proof', score: isRahul ? 32 : 14, maxMarks: 35, comment: isRahul ? 'Rigorous dependency preservation.' : 'Proofs match archived repository verbatim.' },
+                { criterionTitle: 'SQL DDL Execution & Index Optimization', score: isRahul ? 24 : 22, maxMarks: 30, comment: isRahul ? 'Optimal compound index.' : 'Basic queries without explain plan.' }
+              ],
+              similarity: {
+                score: similarityScore,
+                threshold: 30,
+                flagged,
+                matchedSource: flagged ? 'Fall 2025 Archive & GitHub coursework' : 'Standard IEEE Templates',
+                matchedChunks: flagged ? [
+                  {
+                    submissionSnippet: 'Algorithm 3.2: Compute the canonical cover Fc of F. For each functional dependency X -> Y in Fc...',
+                    sourceSnippet: 'Algorithm 3.2: Compute the canonical cover Fc of F. For each functional dependency X -> Y in Fc...',
+                    similarity: 94
+                  }
+                ] : []
+              }
+            }
           }
         ]);
         return;
@@ -1067,6 +1153,142 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
                   </div>
                 </div>
               )}
+
+              {/* Student Academic & Similarity Report Card */}
+              {msg.studentReport && (
+                <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
+                  {/* Student Title Banner */}
+                  <div className="border-b border-slate-200 dark:border-slate-800 pb-2.5 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                          {msg.studentReport.studentName}
+                        </span>
+                        {msg.studentReport.regNo && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                            {msg.studentReport.regNo}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {msg.studentReport.courseName} ({msg.studentReport.courseCode}) • {msg.studentReport.assignmentTitle}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {msg.studentReport.grade ? (
+                        <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold text-xs font-mono">
+                          Grade {msg.studentReport.grade} ({msg.studentReport.score}/{msg.studentReport.totalMarks})
+                        </div>
+                      ) : (
+                        <Badge variant="amber" size="sm">Pending Evaluation</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Submission Meta */}
+                  <div className="grid grid-cols-2 gap-2 text-[11px] bg-white dark:bg-black p-2.5 rounded border border-slate-200 dark:border-slate-800">
+                    <div>
+                      <span className="text-slate-400">File: </span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300 truncate">{msg.studentReport.fileName || 'submission.pdf'}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-slate-400">Submitted: </span>
+                      <span className="text-slate-700 dark:text-slate-300">{msg.studentReport.submissionDate}</span>
+                    </div>
+                  </div>
+
+                  {/* Instructor Feedback */}
+                  {msg.studentReport.feedback && (
+                    <div className="p-2.5 bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/40 rounded text-[11px] text-indigo-900 dark:text-indigo-200">
+                      <span className="font-bold">Evaluation Remarks: </span>
+                      <span className="italic">"{msg.studentReport.feedback}"</span>
+                    </div>
+                  )}
+
+                  {/* Rubric Criteria List */}
+                  {msg.studentReport.rubricScores && msg.studentReport.rubricScores.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Rubric Performance</div>
+                      <div className="space-y-1">
+                        {msg.studentReport.rubricScores.map((r, idx) => (
+                          <div key={idx} className="p-2 bg-white dark:bg-black rounded border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
+                            <div className="truncate">
+                              <span className="font-medium text-slate-800 dark:text-slate-200">{r.criterionTitle}</span>
+                              {r.comment && <span className="text-slate-400 text-[10px] ml-1.5">— {r.comment}</span>}
+                            </div>
+                            <span className="font-mono font-bold text-slate-900 dark:text-slate-100 shrink-0">
+                              {r.score}/{r.maxMarks}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Academic Integrity / Similarity Banner */}
+                  {msg.studentReport.similarity && (
+                    <div className={`p-2.5 rounded border ${
+                      msg.studentReport.similarity.flagged
+                        ? 'bg-rose-50/60 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900'
+                        : 'bg-emerald-50/60 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900'
+                    } space-y-1.5`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          {msg.studentReport.similarity.flagged ? (
+                            <>
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                              <span className="text-rose-900 dark:text-rose-200">Similarity Alert Triggered</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span className="text-emerald-900 dark:text-emerald-200">Academic Integrity Verified</span>
+                            </>
+                          )}
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-xs font-mono font-bold ${
+                          msg.studentReport.similarity.flagged
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-emerald-600 text-white'
+                        }`}>
+                          {msg.studentReport.similarity.score}% Overlap
+                        </span>
+                      </div>
+
+                      {msg.studentReport.similarity.matchedSource && (
+                        <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                          Source: <span className="font-medium text-slate-800 dark:text-slate-200">{msg.studentReport.similarity.matchedSource}</span>
+                        </div>
+                      )}
+
+                      {msg.studentReport.similarity.matchedChunks && msg.studentReport.similarity.matchedChunks.length > 0 && (
+                        <div className="mt-1.5 p-2 bg-white dark:bg-black rounded border border-rose-200 dark:border-rose-900/60 text-[10px] space-y-1">
+                          <div className="font-semibold text-rose-700 dark:text-rose-300">
+                            Matched Snippet Evidence ({msg.studentReport.similarity.matchedChunks[0].similarity}% overlap):
+                          </div>
+                          <div className="text-slate-600 dark:text-slate-400 italic">
+                            "{msg.studentReport.similarity.matchedChunks[0].submissionSnippet}"
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* CTA Inspect in Workspace */}
+                  <div className="pt-1 flex items-center justify-end">
+                    <button
+                      onClick={() => {
+                        onNavigateAction?.();
+                        navigate(`/teacher/evaluation/${assignments[0]?.id || 'assign-1'}`);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow-sm transition-colors"
+                    >
+                      <FileCheck2 className="w-3.5 h-3.5" />
+                      <span>Inspect in Evaluation Workspace</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -1118,6 +1340,12 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
             className="px-2.5 py-1 text-[11px] rounded-md font-medium bg-white dark:bg-academic-darkCard border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-400 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shadow-2xs"
           >
             Analyze class performance
+          </button>
+          <button
+            onClick={() => handleQuickAction('Show report of student Arjun Nair')}
+            className="px-2.5 py-1 text-[11px] rounded-md font-medium bg-white dark:bg-academic-darkCard border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-400 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shadow-2xs"
+          >
+            Show student report (Arjun)
           </button>
           <button
             onClick={() => handleQuickAction('Export my DBMS grade report')}
