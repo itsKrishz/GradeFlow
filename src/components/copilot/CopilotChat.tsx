@@ -2,8 +2,47 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
-import { CopilotMessage, RubricCriterion } from '../../types';
-import { mockUnsubmittedStudents } from '../../data/mockData';
+import { CopilotMessage, RubricCriterion, User, Submission, EnrolledStudent } from '../../types';
+import { mockUnsubmittedStudents, mockSubmissions, mockEnrolledStudents, mockUsers } from '../../data/mockData';
+
+// Helper to parse student name from natural language query
+function extractTargetStudentName(query: string): string | null {
+  const clean = query.trim().replace(/[?!.,;:]/g, '');
+  const m1 = clean.match(
+    /(?:(?:get\s+(?:me\s+)?|show\s+(?:me\s+)?)?report\s+(?:of|for|on)|score\s+of|grade\s+of|how\s+did|performance\s+of|status\s+of|submission\s+of|details\s+of)\s+(?:student\s+)?([a-zA-Z0-9_.\s]+)/i
+  );
+  if (m1 && m1[1]) {
+    let candidate = m1[1].trim();
+    candidate = candidate.replace(/\s+(do|fare|perform|please)$/i, '').trim();
+    const lowerCand = candidate.toLowerCase();
+    const generic = [
+      'one student',
+      'a student',
+      'the student',
+      'student',
+      'any student',
+      'someone',
+      'particular student',
+      'each student',
+      'all students',
+      'this student'
+    ];
+    if (!generic.includes(lowerCand) && candidate.length > 1) {
+      return candidate;
+    }
+  }
+
+  const m2 = clean.match(/([a-zA-Z0-9_]+)(?:'s|\s+)\s*report/i);
+  if (m2 && m2[1]) {
+    const candidate = m2[1].trim();
+    const lowerCand = candidate.toLowerCase();
+    if (!['student', 'evaluation', 'assignment', 'similarity', 'integrity', 'grade', 'class', 'course', 'full', 'my', 'the', 'a', 'get', 'show'].includes(lowerCand)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 import { 
   Sparkles, 
   Send, 
@@ -37,6 +76,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
     courses, 
     assignments, 
     submissions, 
+    enrolledStudents,
     createAssignment, 
     deleteAssignment, 
     updateAssignmentDeadline,
@@ -203,10 +243,10 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
             newDraft.courseCode = matched.code;
             newDraft.courseName = matched.name;
             newDraft.courseId = matched.id;
-          } else if (lower.includes('dbms') || lower.includes('database') || lower.includes('cs301') || lower.includes('cse2004')) {
-            newDraft.courseCode = courses[0]?.code || 'CS301';
-            newDraft.courseName = courses[0]?.name || 'Database Management Systems';
-            newDraft.courseId = courses[0]?.id || 'course-1';
+          } else if (courses.length > 0) {
+            newDraft.courseCode = courses[0].code;
+            newDraft.courseName = courses[0].name;
+            newDraft.courseId = courses[0].id;
           }
         }
 
@@ -417,19 +457,19 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
           title = 'Database Normalization & Schema Design';
         }
 
-        const hasDbms = lower.includes('dbms') || lower.includes('database');
+        const matchedCourse = courses.find(c => lower.includes(c.code.toLowerCase()) || lower.includes(c.name.toLowerCase())) || courses[0];
 
         setAssignmentDraftState({
           stage: 'missing_details',
           title: title,
-          courseCode: hasDbms ? 'CS301' : undefined,
-          courseName: hasDbms ? 'Database Engineering & Relational Design' : undefined,
-          courseId: hasDbms ? courses[0]?.id || 'course-1' : undefined
+          courseCode: matchedCourse?.code,
+          courseName: matchedCourse?.name,
+          courseId: matchedCourse?.id
         });
 
         const missingFields: string[] = [];
         if (!title) missingFields.push('Assignment Title / Topic');
-        if (!hasDbms) missingFields.push('Course');
+        if (!matchedCourse) missingFields.push('Course');
         missingFields.push('Deadline', 'Allowed file type', 'Total marks');
 
         const headingText = title
@@ -447,7 +487,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
               requiredFields: missingFields,
               collectedFields: {
                 Title: title || 'Pending',
-                Course: hasDbms ? 'Database Engineering & Relational Design (CS301)' : 'Pending',
+                Course: matchedCourse ? `${matchedCourse.name} (${matchedCourse.code})` : 'Pending',
                 Deadline: 'Pending',
                 'Allowed file type': 'Pending',
                 'Total marks': 'Pending'
@@ -501,47 +541,76 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
 
       // --- QUERY 6: SHOW SIMILARITY FLAGS ---
       if (lower.includes('similarity') || lower.includes('flagged') || lower.includes('plagiarism') || lower.includes('integrity')) {
+        const allAvailableSubmissions: Submission[] = [...submissions, ...mockSubmissions];
+        const uniqueSubmissions = allAvailableSubmissions.filter((sub, idx, arr) =>
+          idx === arr.findIndex(s => s.id === sub.id)
+        );
+
+        const flaggedItems = uniqueSubmissions
+          .filter(s => s.similarityScore >= (s.similarityReport?.threshold || 30) || s.similarityReport?.flagged)
+          .map(s => {
+            const courseAssign = assignments.find(a => a.id === s.assignmentId);
+            return {
+              studentName: s.studentName,
+              regNo: s.regNo || 'CSE-2024-000',
+              similarity: Math.round(s.similarityScore),
+              matchedSource: s.similarityReport?.matchedSections?.[0]?.matchedSource || (s.similarityReport?.flagged ? 'Cohort Peer Match' : 'Archive Match'),
+              assignmentTitle: courseAssign?.title || 'DBMS Assignment 1'
+            };
+          });
+
+        const finalFlaggedList = flaggedItems;
+
+        if (finalFlaggedList.length === 0) {
+          setMessages(prev => [
+            ...prev,
+            {
+              id: `ai-${Date.now()}`,
+              sender: 'assistant',
+              text: 'Zero flagged submissions in active course records. All submitted assignments are currently within normal academic thresholds (<30% overlap).',
+              timestamp: 'Just now',
+              toolExecution: {
+                actionName: 'Scanning integrity index...',
+                steps: [
+                  { label: 'Querying AST token comparisons', done: true },
+                  { label: 'Filtering similarity > 30% (0 matches)', done: true }
+                ]
+              }
+            }
+          ]);
+          return;
+        }
+
         setMessages(prev => [
           ...prev,
           {
             id: `ai-${Date.now()}`,
             sender: 'assistant',
-            text: '2 submissions have triggered the institutional academic integrity similarity threshold (>30%). None have been rejected automatically—teacher review is required:',
+            text: `${finalFlaggedList.length} submissions have triggered the institutional academic integrity similarity threshold (>30%). None have been rejected automatically—teacher review is required:`,
             timestamp: 'Just now',
             toolExecution: {
               actionName: 'Scanning integrity index...',
               steps: [
                 { label: 'Querying AST token comparisons', done: true },
-                { label: 'Filtering similarity > 30%', done: true }
+                { label: `Filtering similarity > 30% (${finalFlaggedList.length} matches)`, done: true }
               ]
             },
-            flaggedList: [
-              {
-                studentName: 'Arjun Nair',
-                regNo: 'CSE-2024-031',
-                similarity: 42,
-                matchedSource: 'Fall 2025 Archive & GitHub repo',
-                assignmentTitle: 'DBMS Assignment 1'
-              },
-              {
-                studentName: 'Rohan Mehta',
-                regNo: '21BCE1156',
-                similarity: 42,
-                matchedSource: 'CS301-2025-S19 Archive',
-                assignmentTitle: 'Assignment 2 - B-Tree Indexing'
-              }
-            ]
+            flaggedList: finalFlaggedList
           }
         ]);
         return;
       }
 
       // --- QUERY 6B: INDIVIDUAL STUDENT REPORT ---
-      if (
+      const targetFromRegex = extractTargetStudentName(text);
+      const isExplicitReportQuery =
         lower.includes('report of') ||
         lower.includes('student report') ||
         lower.includes('report for') ||
+        lower.includes('report on') ||
         lower.includes('show report') ||
+        lower.includes('get report') ||
+        lower.includes('get me report') ||
         lower.includes('show me the report') ||
         lower.includes('report of one student') ||
         lower.includes('show a student report') ||
@@ -549,70 +618,257 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
         lower.includes('score of') ||
         lower.includes('grade of') ||
         lower.includes('how did ') ||
-        (lower.includes('report') && (lower.includes('student') || lower.includes('arjun') || lower.includes('rahul') || lower.includes('jordan') || lower.includes('alex')))
-      ) {
-        const isRahul = lower.includes('rahul') || lower.includes('alex');
-        const studentName = isRahul ? 'Rahul Kumar' : 'Arjun Nair';
-        const regNo = isRahul ? 'CSE-2024-042' : 'CSE-2024-031';
-        const email = isRahul ? 'rahul.k@student.edu' : 'student2@gradeflow.edu';
-        const score = isRahul ? 90 : 58;
-        const grade = isRahul ? 'A' : 'D';
-        const feedback = isRahul
-          ? 'Exceptional submission with precise functional dependency decomposition and optimal B-Tree index considerations.'
-          : 'High overlap detected in 3NF canonical cover proofs matching Fall 2025 archive. Please see instructor during office hours.';
-        const similarityScore = isRahul ? 8.5 : 42;
-        const flagged = !isRahul;
+        lower.includes('status of') ||
+        lower.includes('marks of');
 
+      // Retrieve all known students (including newly created accounts from localStorage)
+      let managedUsers: User[] = [];
+      try {
+        const saved = localStorage.getItem('gradeflow_managed_users');
+        if (saved) managedUsers = JSON.parse(saved);
+      } catch (e) {
+        // ignore
+      }
+      const allKnownUsers: User[] = [...managedUsers, ...mockUsers];
+      const allKnownStudents = allKnownUsers.filter(u => u.role === 'student');
+
+      // Check if any specific student is mentioned in text
+      const mentionedStudent = allKnownStudents.find(st => {
+        const sName = st.name.toLowerCase();
+        const sUsername = (st.username || '').toLowerCase();
+        const first = sName.split(' ')[0];
+        return (
+          (first.length > 2 && lower.includes(first)) ||
+          lower.includes(sName) ||
+          (sUsername.length > 2 && lower.includes(sUsername))
+        );
+      });
+
+      const isStudentQuery =
+        isExplicitReportQuery ||
+        Boolean(targetFromRegex) ||
+        (Boolean(mentionedStudent) && (
+          lower.includes('report') ||
+          lower.includes('score') ||
+          lower.includes('grade') ||
+          lower.includes('submission') ||
+          lower.includes('status') ||
+          lower.includes('how') ||
+          lower.includes('get') ||
+          lower.includes('show')
+        ));
+
+      if (isStudentQuery) {
+        // Build combined repository of submissions
+        const allAvailableSubmissions: Submission[] = [...submissions, ...mockSubmissions];
+        const uniqueSubmissions = allAvailableSubmissions.filter((sub, idx, arr) =>
+          idx === arr.findIndex(s => s.id === sub.id)
+        );
+
+        const targetSearch = targetFromRegex?.toLowerCase().trim() || '';
+
+        // 1. Look for matching submission
+        let matchedSub: Submission | undefined;
+
+        if (targetSearch) {
+          matchedSub = uniqueSubmissions.find(s => {
+            const sName = s.studentName.toLowerCase();
+            const sEmail = (s.studentEmail || '').toLowerCase();
+            return (
+              sName.includes(targetSearch) ||
+              targetSearch.includes(sName) ||
+              sName.split(' ').some(part => part.length > 2 && targetSearch.includes(part)) ||
+              sEmail.includes(targetSearch)
+            );
+          });
+        }
+
+        if (!matchedSub && mentionedStudent) {
+          const mName = mentionedStudent.name.toLowerCase();
+          const mEmail = (mentionedStudent.email || '').toLowerCase();
+          matchedSub = uniqueSubmissions.find(s => {
+            const sName = s.studentName.toLowerCase();
+            const sEmail = (s.studentEmail || '').toLowerCase();
+            return sName.includes(mName) || mName.includes(sName) || sEmail === mEmail;
+          });
+        }
+
+        // Generic fallback when user asks for "one student" or "a student"
+        if (!matchedSub && !targetSearch && !mentionedStudent && (lower.includes('one student') || lower.includes('a student'))) {
+          matchedSub = uniqueSubmissions.find(s => s.evaluationStatus === 'Evaluated' || s.status === 'Submitted') || uniqueSubmissions[0];
+        }
+
+        // Case A: Found student submission
+        if (matchedSub) {
+          const matchedUser = allKnownStudents.find(
+            u => u.name.toLowerCase() === matchedSub!.studentName.toLowerCase() || u.email.toLowerCase() === (matchedSub!.studentEmail || '').toLowerCase()
+          );
+
+          const studentName = matchedSub.studentName;
+          const regNo = matchedSub.regNo || matchedUser?.regNo || 'CSE-2024-015';
+          const email = matchedSub.studentEmail || matchedUser?.email || 'student@gradeflow.edu';
+          const score = matchedSub.evaluation?.totalScore ?? (matchedSub.similarityScore ? Math.round(100 - matchedSub.similarityScore) : 85);
+          const grade = matchedSub.evaluation?.grade || (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : score >= 50 ? 'D' : 'F');
+          const similarityScore = matchedSub.similarityScore ?? matchedSub.similarityReport?.overallScore ?? 8.4;
+          const flagged = Boolean(matchedSub.similarityReport?.flagged || similarityScore > 30);
+          const feedback = matchedSub.evaluation?.feedback || (flagged
+            ? 'High overlap detected in 3NF canonical cover proofs matching Fall 2025 archive. Please see instructor during office hours.'
+            : 'Excellent submission with clear functional dependency proofs and valid 3NF decomposition.');
+
+          // Generate student-specific rubric breakdown
+          let rubricScores = [
+            {
+              criterionTitle: 'Schema Correctness & Key Constraints',
+              score: Math.min(35, Math.round(score * 0.36)),
+              maxMarks: 35,
+              comment: flagged ? 'Functional but standard structure.' : 'Clean candidate keys & lossless join decomposition.'
+            },
+            {
+              criterionTitle: '3NF Decomposition & Normalization Proof',
+              score: Math.min(35, Math.round(score * 0.34)),
+              maxMarks: 35,
+              comment: flagged ? 'Proofs match archived repository verbatim.' : 'Rigorous dependency preservation and minimal cover.'
+            },
+            {
+              criterionTitle: 'SQL DDL Execution & Index Optimization',
+              score: Math.max(0, score - Math.min(35, Math.round(score * 0.36)) - Math.min(35, Math.round(score * 0.34))),
+              maxMarks: 30,
+              comment: flagged ? 'Basic queries without explain plan.' : 'Clean DDL syntax with foreign key constraints.'
+            }
+          ];
+
+          // Fine-tuned scores for known students
+          if (studentName.toLowerCase().includes('bhadra')) {
+            rubricScores = [
+              { criterionTitle: 'Schema Correctness & Key Constraints', score: 32, maxMarks: 35, comment: 'Clean candidate keys & lossless join decomposition.' },
+              { criterionTitle: '3NF Decomposition & Normalization Proof', score: 30, maxMarks: 35, comment: 'Rigorous dependency preservation and minimal cover.' },
+              { criterionTitle: 'SQL DDL Execution & Index Optimization', score: 26, maxMarks: 30, comment: 'Clean DDL syntax with foreign key constraints.' }
+            ];
+          } else if (studentName.toLowerCase().includes('rahul')) {
+            rubricScores = [
+              { criterionTitle: 'Schema Correctness & Key Constraints', score: 34, maxMarks: 35, comment: 'Clean constraints and keys.' },
+              { criterionTitle: '3NF Decomposition & Normalization Proof', score: 32, maxMarks: 35, comment: 'Rigorous dependency preservation.' },
+              { criterionTitle: 'SQL DDL Execution & Index Optimization', score: 24, maxMarks: 30, comment: 'Optimal compound index.' }
+            ];
+          } else if (studentName.toLowerCase().includes('arjun')) {
+            rubricScores = [
+              { criterionTitle: 'Schema Correctness & Key Constraints', score: 22, maxMarks: 35, comment: 'Functional but standard structure.' },
+              { criterionTitle: '3NF Decomposition & Normalization Proof', score: 14, maxMarks: 35, comment: 'Proofs match archived repository verbatim.' },
+              { criterionTitle: 'SQL DDL Execution & Index Optimization', score: 22, maxMarks: 30, comment: 'Basic queries without explain plan.' }
+            ];
+          }
+
+          setMessages(prev => [
+            ...prev,
+            {
+              id: `ai-${Date.now()}`,
+              sender: 'assistant',
+              text: `Here is the comprehensive academic report and similarity analysis for **${studentName}**:`,
+              timestamp: 'Just now',
+              toolExecution: {
+                actionName: `Inspecting records for ${studentName}...`,
+                steps: [
+                  { label: 'Verified course enrollment in CSE2004', done: true },
+                  { label: `Extracted submission: ${matchedSub!.fileName || `${studentName.replace(/\s+/g, '_')}_DBMS_Project.pdf`}`, done: true },
+                  { label: `Loaded rubric scores (Grade ${grade} • ${score}/100)`, done: true },
+                  { label: `Analyzed similarity report (${similarityScore}% overlap)`, done: true }
+                ]
+              },
+              studentReport: {
+                studentName,
+                regNo,
+                email,
+                department: 'Computer Science & Engineering',
+                courseName: 'Database Management Systems',
+                courseCode: 'CSE2004',
+                assignmentTitle: 'Assignment 1 — Relational Schema & 3NF Normalization',
+                submissionDate: matchedSub.submittedAt ? (matchedSub.submittedAt.includes('T') ? new Date(matchedSub.submittedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : matchedSub.submittedAt) : 'Sep 15, 2026, 09:05 PM',
+                fileName: matchedSub.fileName || `${studentName.replace(/\s+/g, '_')}_DBMS_Project.pdf`,
+                status: flagged ? 'Flagged' : 'Graded',
+                score,
+                totalMarks: 100,
+                percentage: score,
+                grade,
+                feedback,
+                rubricScores,
+                similarity: {
+                  score: similarityScore,
+                  threshold: 30,
+                  flagged,
+                  matchedSource: flagged ? (matchedSub.similarityReport?.matchedSections?.[0]?.matchedSource || 'Fall 2025 Archive & GitHub repo') : 'Standard Academic Coursework & IEEE Reference',
+                  matchedChunks: flagged ? [
+                    {
+                      submissionSnippet: matchedSub.similarityReport?.matchedSections?.[0]?.matchedSnippet || 'Algorithm 3.2: Compute the canonical cover Fc of F. For each functional dependency X -> Y in Fc...',
+                      sourceSnippet: matchedSub.similarityReport?.matchedSections?.[0]?.matchedSnippet || 'Algorithm 3.2: Compute the canonical cover Fc of F. For each functional dependency X -> Y in Fc...',
+                      similarity: Math.round(similarityScore)
+                    }
+                  ] : []
+                }
+              }
+            }
+          ]);
+          return;
+        }
+
+        // Case B: Student is enrolled or in directory, but has not submitted Assignment 1 yet
+        const allAvailableEnrolled: EnrolledStudent[] = [...enrolledStudents, ...mockEnrolledStudents];
+        const enrolledMatch = allAvailableEnrolled.find(e => {
+          const eName = e.name.toLowerCase();
+          const eEmail = (e.email || '').toLowerCase();
+          const q = targetSearch || (mentionedStudent ? mentionedStudent.name.toLowerCase() : '');
+          return (
+            eName.includes(q) ||
+            q.includes(eName) ||
+            eName.split(' ').some(part => part.length > 2 && q.includes(part)) ||
+            eEmail.includes(q)
+          );
+        }) || (mentionedStudent ? {
+          id: mentionedStudent.id,
+          name: mentionedStudent.name,
+          regNo: mentionedStudent.regNo || 'CSE-2024-015',
+          email: mentionedStudent.email,
+          courseId: courses[0]?.id || 'course-default',
+          enrollmentStatus: 'Active' as const,
+          averageGrade: 'N/A',
+          submittedAssignments: 0,
+          totalAssignments: 1
+        } : null);
+
+        if (enrolledMatch) {
+          setMessages(prev => [
+            ...prev,
+            {
+              id: `ai-${Date.now()}`,
+              sender: 'assistant',
+              text: `Student **${enrolledMatch.name}** (${enrolledMatch.regNo || enrolledMatch.email}) is enrolled in **Database Management Systems (CSE2004)**, but has not submitted Assignment 1 yet.`,
+              timestamp: 'Just now',
+              toolExecution: {
+                actionName: `Searching records for ${enrolledMatch.name}...`,
+                steps: [
+                  { label: 'Verified course enrollment in CSE2004', done: true },
+                  { label: 'Checking assignment submissions (0 found)', done: true }
+                ]
+              }
+            }
+          ]);
+          return;
+        }
+
+        // Case C: Student not found in course records (NEVER default to Arjun Nair)
+        const requestedTarget = targetFromRegex || text;
         setMessages(prev => [
           ...prev,
           {
             id: `ai-${Date.now()}`,
             sender: 'assistant',
-            text: `Here is the comprehensive academic report and similarity analysis for **${studentName}**:`,
+            text: `No student record found matching "**${requestedTarget}**" in your course records.\n\nEnrolled students with active records include: **Bhadra K.** and **Nevin P.**.\n\nYou can ask: *"Show report of Bhadra"* or *"Show report of Nevin"*.`,
             timestamp: 'Just now',
             toolExecution: {
-              actionName: `Inspecting records for ${studentName}...`,
+              actionName: `Searching records for "${requestedTarget}"...`,
               steps: [
-                { label: 'Verified course enrollment in CSE2004', done: true },
-                { label: `Extracted submission: ${studentName.replace(' ', '_')}_DBMS_Project.pdf`, done: true },
-                { label: `Loaded rubric scores (Grade ${grade})`, done: true },
-                { label: `Analyzed similarity report (${similarityScore}%)`, done: true }
+                { label: 'Scanned enrolled student directory (0 matches)', done: true },
+                { label: 'Searched submission archives (0 matches)', done: true }
               ]
-            },
-            studentReport: {
-              studentName,
-              regNo,
-              email,
-              department: 'Computer Science & Engineering',
-              courseName: 'Database Management Systems',
-              courseCode: 'CSE2004',
-              assignmentTitle: 'Assignment 1 — Relational Schema & 3NF Normalization',
-              submissionDate: 'Sep 15, 2026, 09:05 PM',
-              fileName: `${studentName.replace(' ', '_')}_DBMS_Project.pdf`,
-              status: flagged ? 'Flagged' : 'Graded',
-              score,
-              totalMarks: 100,
-              percentage: score,
-              grade,
-              feedback,
-              rubricScores: [
-                { criterionTitle: 'Schema Correctness & Key Constraints', score: isRahul ? 34 : 22, maxMarks: 35, comment: isRahul ? 'Clean constraints and keys.' : 'Functional but standard structure.' },
-                { criterionTitle: '3NF Decomposition & Normalization Proof', score: isRahul ? 32 : 14, maxMarks: 35, comment: isRahul ? 'Rigorous dependency preservation.' : 'Proofs match archived repository verbatim.' },
-                { criterionTitle: 'SQL DDL Execution & Index Optimization', score: isRahul ? 24 : 22, maxMarks: 30, comment: isRahul ? 'Optimal compound index.' : 'Basic queries without explain plan.' }
-              ],
-              similarity: {
-                score: similarityScore,
-                threshold: 30,
-                flagged,
-                matchedSource: flagged ? 'Fall 2025 Archive & GitHub coursework' : 'Standard IEEE Templates',
-                matchedChunks: flagged ? [
-                  {
-                    submissionSnippet: 'Algorithm 3.2: Compute the canonical cover Fc of F. For each functional dependency X -> Y in Fc...',
-                    sourceSnippet: 'Algorithm 3.2: Compute the canonical cover Fc of F. For each functional dependency X -> Y in Fc...',
-                    similarity: 94
-                  }
-                ] : []
-              }
             }
           }
         ]);
@@ -660,9 +916,9 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
       }
 
       // --- QUERY 8: EXPORT GRADE REPORT ---
-      if (lower.includes('export') || lower.includes('csv') || lower.includes('report')) {
+      if (lower.includes('export') || lower.includes('csv') || (lower.includes('download') && lower.includes('report')) || lower.includes('export grade report')) {
         // Trigger real CSV download
-        const csvContent = '\uFEFFStudent Name,Reg No,Course,Assignment,Score,Percentage,Grade\nRahul Kumar,CSE-2024-042,CSE2004,Normalization,18,90%,A+\nAnjali Menon,CSE-2024-019,CSE2004,Normalization,16,80%,A\nArjun Nair,CSE-2024-031,CSE2004,Normalization,12,60%,B\nPriya Sharma,CSE-2024-055,CSE2004,Normalization,19,95%,A+';
+        const csvContent = '\uFEFFStudent Name,Reg No,Course,Assignment,Score,Percentage,Grade\nBhadra K.,CSE-2024-015,CSE2004,Normalization,18,90%,A+\nNevin P.,CSE-2024-016,CSE2004,Normalization,17,85%,A';
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -693,13 +949,8 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
           {
             id: `ai-${Date.now()}`,
             sender: 'assistant',
-            text: 'You currently have 6 late submissions across your courses. Academic policy penalty deduction preview is available:',
+            text: 'All active submissions have met their respective deadlines. Zero late submission penalties have been incurred across your course sections.',
             timestamp: 'Just now',
-            studentsList: [
-              { studentName: 'Anjali Menon', regNo: 'CSE-2024-019', deadline: 'Submitted 2h 15m late', status: 'Late' },
-              { studentName: 'Vikram Aditya', regNo: 'CSE-2024-078', deadline: 'Submitted 11h late', status: 'Late' },
-              { studentName: 'Dev Patel', regNo: '21BCE1311', deadline: 'Submitted 1d late', status: 'Late' }
-            ]
           }
         ]);
         return;
@@ -720,8 +971,9 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
 
   // Confirm Assignment Creation
   const handleConfirmCreateAssignment = (draft: NonNullable<CopilotMessage['assignmentDraft']>) => {
+    const matchedCourse = courses.find(c => c.code === draft.courseCode) || courses[0];
     const newAssignment = createAssignment({
-      courseId: draft.courseCode === 'CSE2004' ? (courses[0]?.id || 'course-1') : (courses[1]?.id || 'course-2'),
+      courseId: matchedCourse?.id || 'course-default',
       courseName: draft.courseName,
       courseCode: draft.courseCode,
       title: draft.title,
@@ -1085,7 +1337,11 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
                           <button
                             onClick={() => {
                               onNavigateAction?.();
-                              navigate('/teacher/evaluation/assign-1');
+                              if (assignments.length > 0) {
+                                navigate(`/teacher/evaluation/${assignments[0].id}`);
+                              } else {
+                                navigate('/teacher/inbox');
+                              }
                             }}
                             className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded hover:bg-indigo-100"
                           >
@@ -1279,7 +1535,11 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
                     <button
                       onClick={() => {
                         onNavigateAction?.();
-                        navigate(`/teacher/evaluation/${assignments[0]?.id || 'assign-1'}`);
+                        if (assignments.length > 0) {
+                          navigate(`/teacher/evaluation/${assignments[0].id}`);
+                        } else {
+                          navigate('/teacher/inbox');
+                        }
                       }}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow-sm transition-colors"
                     >
@@ -1342,10 +1602,16 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({ compactMode = false, o
             Analyze class performance
           </button>
           <button
-            onClick={() => handleQuickAction('Show report of student Arjun Nair')}
+            onClick={() => handleQuickAction('Get me report of Bhadra')}
             className="px-2.5 py-1 text-[11px] rounded-md font-medium bg-white dark:bg-academic-darkCard border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-400 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shadow-2xs"
           >
-            Show student report (Arjun)
+            Show student report (Bhadra)
+          </button>
+          <button
+            onClick={() => handleQuickAction('Get me report of Nevin')}
+            className="px-2.5 py-1 text-[11px] rounded-md font-medium bg-white dark:bg-academic-darkCard border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-400 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shadow-2xs"
+          >
+            Show student report (Nevin)
           </button>
           <button
             onClick={() => handleQuickAction('Export my DBMS grade report')}

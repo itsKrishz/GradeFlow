@@ -64,6 +64,9 @@ export interface MatchedSection {
   similarityPercentage: number;
   matchedSource: string;
   matchedSnippet: string;
+  matchedSubmissionId?: string;
+  matchedStudentName?: string;
+  matchedFileName?: string;
 }
 
 export interface SimilarityReport {
@@ -118,6 +121,25 @@ export interface Submission {
   aiSuggestedRubric?: Record<string, number>;
   aiReasoning?: string | Record<string, string>;
   aiSuggestedFeedback?: string;
+  fileHash?: string;
+  fileBytes?: number;
+  extractedText?: string;
+  fileUrl?: string;
+  pdfStorageKey?: string;
+}
+
+export interface SubmissionPipelineResult {
+  submissionId: string;
+  wordCount: number;
+  fileHash: string;
+  similarityScore: number;
+  isFlagged: boolean;
+  matchedPeerName?: string;
+  matchedReason?: string;
+  aiSuggestedScore: number;
+  totalMarks: number;
+  aiSuggestedRubric: Record<string, number>;
+  aiReasoning: Record<string, string>;
 }
 
 export interface Activity {

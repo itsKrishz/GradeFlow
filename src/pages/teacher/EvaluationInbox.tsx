@@ -30,100 +30,52 @@ export const EvaluationInbox: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
 
-  // High-level counts
-  const totalPending = 37; // realistic scaled metric
-  const totalLate = 6;
-  const totalFlagged = 4;
-  const totalCompleted = 128;
+  // High-level counts from real submissions
+  const totalPending = submissions.filter(s => s.evaluationStatus === 'Pending').length;
+  const totalLate = submissions.filter(s => s.status === 'Late').length;
+  const totalFlagged = submissions.filter(s => s.evaluationStatus === 'Flagged' || (s.similarityScore || 0) >= 30).length;
+  const totalCompleted = submissions.filter(s => s.evaluationStatus === 'Evaluated').length;
 
-  // Grouped assignments mock data (realistic scaled overview)
-  const assignmentGroups = [
-    {
-      id: 'assign-1',
-      courseCode: 'CSE2004',
-      courseName: 'Database Management Systems',
-      title: 'DBMS — Normalization',
-      pending: 18,
-      late: 3,
-      flagged: 2,
-      total: 62,
-      dueDate: 'Oct 5, 2026',
-      actionLabel: 'Start Evaluation'
-    },
-    {
-      id: 'assign-4',
-      courseCode: 'CSE3001',
-      courseName: 'Operating Systems',
-      title: 'Operating Systems — Scheduling',
-      pending: 11,
-      late: 2,
-      flagged: 0,
-      total: 54,
-      dueDate: 'Oct 8, 2026',
-      actionLabel: 'Continue'
-    },
-    {
-      id: 'assign-se',
-      courseCode: 'CSE3004',
-      courseName: 'Software Engineering',
-      title: 'Software Engineering — Agile Sprint Review',
-      pending: 8,
-      late: 1,
-      flagged: 2,
-      total: 48,
-      dueDate: 'Oct 10, 2026',
-      actionLabel: 'Start Evaluation'
-    }
-  ];
+  // Grouped assignments from real assignments
+  const assignmentGroups = assignments.map(a => {
+    const asgSubs = submissions.filter(s => s.assignmentId === a.id);
+    const pending = asgSubs.filter(s => s.evaluationStatus === 'Pending').length;
+    const late = asgSubs.filter(s => s.status === 'Late').length;
+    const flagged = asgSubs.filter(s => s.evaluationStatus === 'Flagged' || (s.similarityScore || 0) >= 30).length;
+    return {
+      id: a.id,
+      courseCode: a.courseCode,
+      courseName: a.courseName,
+      title: a.title,
+      pending,
+      late,
+      flagged,
+      total: asgSubs.length,
+      dueDate: a.dueDate,
+      actionLabel: pending > 0 ? 'Start Evaluation' : 'View Submissions'
+    };
+  });
 
-  // Flat submissions roster for scalable 1-25 of 128 view
+  // Flat submissions roster from real submissions
   const allSubmissionsRoster = useMemo(() => {
-    // Generate realistic roster items combining real submissions + scaled mock items
-    const baseList = submissions.map(s => ({
-      id: s.id,
-      studentName: s.studentName,
-      regNo: s.regNo,
-      courseCode: 'CSE2004',
-      assignmentTitle: 'Normalization',
-      assignmentId: s.assignmentId,
-      submittedAt: s.submittedAt,
-      status: s.status,
-      evaluationStatus: s.evaluationStatus,
-      similarityScore: s.similarityScore,
-      aiScore: s.aiSuggestedScore || (s.evaluation ? s.evaluation.totalScore : 18),
-      maxScore: s.evaluation?.maxScore || 20
-    }));
-
-    // Add scaled items to simulate realistic class volume of 128 items
-    const names = [
-      'Ananya Iyer', 'Dev Patel', 'Kavya Pillai', 'Aditya Verma', 'Meera Nambiar',
-      'Gaurav Sen', 'Divya Ramesh', 'Siddharth Roy', 'Nisha Joshi', 'Rohan Gupta',
-      'Pooja Nair', 'Suresh Kumar', 'Deepak Varma', 'Manish Reddy', 'Swati Deshmukh',
-      'Arun Balaji', 'Tanvi Saxena', 'Karan Mehra', 'Bhavna Kulkarni', 'Tarun Jain'
-    ];
-
-    const syntheticItems = names.map((name, i) => {
-      const isLate = i % 5 === 0;
-      const isFlagged = i % 7 === 0;
-      const isCompleted = i % 3 === 0;
+    return submissions.map(s => {
+      const asg = assignments.find(a => a.id === s.assignmentId);
       return {
-        id: `synth-${i}`,
-        studentName: name,
-        regNo: `23BCS${String(10 + i).padStart(3, '0')}`,
-        courseCode: i % 2 === 0 ? 'CSE2004' : 'CSE3001',
-        assignmentTitle: i % 2 === 0 ? 'Normalization' : 'Scheduling',
-        assignmentId: i % 2 === 0 ? 'assign-1' : 'assign-4',
-        submittedAt: '2026-09-18 16:30',
-        status: isLate ? ('Late' as const) : ('Submitted' as const),
-        evaluationStatus: isCompleted ? ('Evaluated' as const) : isFlagged ? ('Flagged' as const) : ('Pending' as const),
-        similarityScore: isFlagged ? 44 : Math.floor(4 + (i * 2) % 15),
-        aiScore: 15 + (i % 5),
-        maxScore: 20
+        id: s.id,
+        studentName: s.studentName,
+        regNo: s.regNo,
+        courseCode: asg?.courseCode || 'N/A',
+        assignmentTitle: asg?.title || s.fileName,
+        assignmentId: s.assignmentId,
+        submittedAt: s.submittedAt,
+        status: s.status,
+        evaluationStatus: s.evaluationStatus,
+        similarityScore: s.similarityScore,
+        aiScore: s.aiSuggestedScore || (s.evaluation ? s.evaluation.totalScore : 0),
+        maxScore: s.evaluation?.maxScore || asg?.totalMarks || 100
       };
     });
-
-    return [...baseList, ...syntheticItems];
-  }, [submissions]);
+  }, [submissions, assignments]);
 
   // Filter roster
   const filteredRoster = useMemo(() => {
@@ -164,7 +116,7 @@ export const EvaluationInbox: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate('/teacher/batch-evaluation/assign-1')}
+            onClick={() => navigate(assignments.length > 0 ? `/teacher/batch-evaluation/${assignments[0].id}` : '/teacher/assignments')}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-white dark:bg-academic-darkCard border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-md transition-colors shadow-sm"
           >
             <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -326,7 +278,22 @@ export const EvaluationInbox: React.FC = () => {
       {/* VIEW 1: GROUPED BY ASSIGNMENT (THE REQUESTED CORE INBOX VIEW) */}
       {viewMode === 'grouped' && (
         <div className="space-y-4">
-          {assignmentGroups.map((group) => (
+          {assignmentGroups.length === 0 ? (
+            <div className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-12 text-center shadow-sm">
+              <Inbox className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No Assignments in Inbox</h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
+                No assignments have been created yet. Create an assignment to receive student submissions.
+              </p>
+              <button
+                onClick={() => navigate('/teacher/assignments/create')}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors shadow-sm"
+              >
+                <span>Create Assignment</span>
+              </button>
+            </div>
+          ) : (
+            assignmentGroups.map((group) => (
             <div
               key={group.id}
               className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
@@ -398,7 +365,7 @@ export const EvaluationInbox: React.FC = () => {
                 </button>
               </div>
             </div>
-          ))}
+          )))}
         </div>
       )}
 
@@ -413,7 +380,7 @@ export const EvaluationInbox: React.FC = () => {
               </span>
             </div>
             <span className="text-[11px] font-mono text-slate-500">
-              Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredRoster.length)} of {allSubmissionsRoster.length} Total Submissions
+              Showing {filteredRoster.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, filteredRoster.length)} of {allSubmissionsRoster.length} Total Submissions
             </span>
           </div>
 
@@ -432,7 +399,14 @@ export const EvaluationInbox: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-academic-lightBorder dark:divide-academic-darkBorder">
-                {paginatedRoster.map((sub) => (
+                {paginatedRoster.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                      No student submissions found.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedRoster.map((sub) => (
                   <tr key={sub.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
                       {sub.studentName}
@@ -483,7 +457,7 @@ export const EvaluationInbox: React.FC = () => {
                       </button>
                     </td>
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>

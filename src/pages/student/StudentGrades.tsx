@@ -36,7 +36,14 @@ export const StudentGrades: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-academic-lightBorder dark:divide-academic-darkBorder">
-              {studentSubmissions.map((sub) => {
+              {studentSubmissions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    No submissions or grades recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                studentSubmissions.map((sub) => {
                 const asg = assignments.find(a => a.id === sub.assignmentId);
                 const isEvaluated = sub.evaluationStatus === 'Evaluated';
 
@@ -81,7 +88,7 @@ export const StudentGrades: React.FC = () => {
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>

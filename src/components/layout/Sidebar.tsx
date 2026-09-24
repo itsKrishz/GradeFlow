@@ -32,20 +32,21 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggleCollapse }) => {
-  const { currentUser, assignments } = useApp();
+  const { currentUser, assignments, submissions } = useApp();
 
   // Find the primary assignment for evaluation workspace link
-  const primaryAssignment = assignments[0] || { id: 'assign-1' };
+  const primaryAssignment = assignments[0];
+  const pendingCount = submissions.filter(s => s.evaluationStatus === 'Pending').length;
 
   // Role-based navigation items
   const teacherLinks: NavItem[] = [
     { to: '/teacher/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/teacher/inbox', label: 'Inbox', icon: Inbox, badge: '37' },
+    { to: '/teacher/inbox', label: 'Inbox', icon: Inbox, badge: pendingCount > 0 ? String(pendingCount) : undefined },
     { to: '/teacher/copilot', label: 'Copilot', icon: Sparkles, badge: 'AI' },
     { to: '/teacher/courses', label: 'Courses', icon: BookOpen },
     { to: '/teacher/assignments', label: 'Assignments', icon: FileText },
     { 
-      to: `/teacher/evaluation/${primaryAssignment.id}`, 
+      to: primaryAssignment ? `/teacher/evaluation/${primaryAssignment.id}` : '/teacher/assignments', 
       label: 'Workspace', 
       icon: FileCheck2
     },

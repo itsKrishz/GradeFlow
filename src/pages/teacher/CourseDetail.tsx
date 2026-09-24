@@ -22,9 +22,26 @@ export const CourseDetail: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { courses, assignments, enrolledStudents, deleteCourse, deleteAssignment, showToast } = useApp();
+  const { courses, assignments, enrolledStudents, submissions, deleteCourse, deleteAssignment, showToast } = useApp();
 
   const course = courses.find(c => c.id === courseId) || courses[0];
+
+  if (!course) {
+    return (
+      <div className="p-8 text-center space-y-4 max-w-md mx-auto mt-12 bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-xl shadow-sm">
+        <BookOpen className="w-12 h-12 text-slate-400 mx-auto" />
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Course Not Found</h3>
+        <p className="text-xs text-slate-500">The requested course does not exist or has been removed.</p>
+        <button
+          onClick={() => navigate('/teacher/courses')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold"
+        >
+          Back to Courses
+        </button>
+      </div>
+    );
+  }
+
   const currentTab = searchParams.get('tab') || 'overview';
 
   const [studentSearch, setStudentSearch] = useState('');
@@ -33,7 +50,20 @@ export const CourseDetail: React.FC = () => {
   const [assignmentToDelete, setAssignmentToDelete] = useState<any | null>(null);
 
   const courseAssignments = assignments.filter(a => a.courseId === course.id || a.courseCode === course.code);
-  const courseStudents = enrolledStudents.filter(s => s.courseId === course.id || s.courseId === 'course-1');
+  const courseStudents = enrolledStudents.filter(s => s.courseId === course.id);
+
+  // Compute actual average class grade across course assignments
+  const courseAsgIds = new Set(courseAssignments.map(a => a.id));
+  const courseSubmissions = submissions.filter(s => courseAsgIds.has(s.assignmentId));
+  const courseEvalSubmissions = courseSubmissions.filter(s => s.evaluation && s.evaluation.maxScore > 0);
+
+  const avgClassGradeVal = courseEvalSubmissions.length > 0
+    ? courseEvalSubmissions.reduce((acc, s) => acc + (s.evaluation!.totalScore / s.evaluation!.maxScore) * 100, 0) / courseEvalSubmissions.length
+    : null;
+
+  const avgClassGradeStr = avgClassGradeVal !== null
+    ? `${avgClassGradeVal.toFixed(1)}% (${avgClassGradeVal >= 90 ? 'A+' : avgClassGradeVal >= 80 ? 'A' : avgClassGradeVal >= 70 ? 'B' : avgClassGradeVal >= 60 ? 'C' : 'D'})`
+    : '— (No evaluations yet)';
 
   const filteredStudents = courseStudents.filter(s =>
     s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
@@ -176,7 +206,7 @@ export const CourseDetail: React.FC = () => {
               </div>
               <div className="flex items-center justify-between text-xs pb-2 border-b border-academic-lightBorder dark:border-academic-darkBorder">
                 <span className="text-slate-600 dark:text-slate-400">Average Class Grade</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">82.4% (A-)</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">{avgClassGradeStr}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-600 dark:text-slate-400">Similarity Threshold</span>
@@ -275,7 +305,13 @@ export const CourseDetail: React.FC = () => {
                         <Mail className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => navigate(`/teacher/evaluation/${courseAssignments[0]?.id || 'assign-1'}`)}
+                        onClick={() => {
+                          if (courseAssignments[0]) {
+                            navigate(`/teacher/evaluation/${courseAssignments[0].id}`);
+                          } else {
+                            showToast('No assignments in this course yet. Create one first.', 'info');
+                          }
+                        }}
                         className="px-2 py-0.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded border border-slate-300 dark:border-slate-700"
                       >
                         Submissions

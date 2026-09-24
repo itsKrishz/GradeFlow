@@ -44,7 +44,7 @@ export const AdminCourses: React.FC = () => {
                     {course.name}
                   </td>
                   <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
-                    {course.teacherName || 'Prof. Sarah Jenkins'}
+                    {course.teacherName || 'Faculty Instructor'}
                   </td>
                   <td className="px-4 py-3 text-slate-500">
                     Section {course.section}

@@ -21,6 +21,23 @@ export const AssignmentDetail: React.FC = () => {
   const { assignments, submissions } = useApp();
 
   const assignment = assignments.find(a => a.id === assignmentId) || assignments[0];
+
+  if (!assignment) {
+    return (
+      <div className="p-8 text-center space-y-4 max-w-md mx-auto mt-12 bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-xl shadow-sm">
+        <FileCheck2 className="w-12 h-12 text-slate-400 mx-auto" />
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Assignment Not Found</h3>
+        <p className="text-xs text-slate-500">The assignment you are looking for does not exist or has been deleted.</p>
+        <button
+          onClick={() => navigate('/teacher/assignments')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold"
+        >
+          Back to Assignments
+        </button>
+      </div>
+    );
+  }
+
   const assignmentSubmissions = submissions.filter(s => s.assignmentId === assignment.id);
 
   return (

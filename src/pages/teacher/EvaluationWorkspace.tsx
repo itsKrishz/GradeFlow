@@ -27,11 +27,15 @@ import {
   Scale,
   ShieldCheck,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Download,
+  Upload,
+  Eye
 } from 'lucide-react';
 import { Badge } from '../../components/common/Badge';
 import { mockFeedbackTemplates, mockSimilarityComparison } from '../../data/mockData';
 import { Evaluation } from '../../types';
+import { getOrGeneratePdfUrl } from '../../utils/pdfStorage';
 
 export const EvaluationWorkspace: React.FC = () => {
   const { assignmentId } = useParams<{ assignmentId: string }>();
@@ -42,15 +46,16 @@ export const EvaluationWorkspace: React.FC = () => {
     submissions, 
     saveEvaluation, 
     generateAIFeedback, 
-    showToast 
+    showToast,
+    attachPdfToSubmission 
   } = useApp();
 
   // Find assignment
-  const currentAssignmentId = assignmentId || assignments[0]?.id || 'assign-1';
+  const currentAssignmentId = assignmentId || assignments[0]?.id;
   const assignment = assignments.find(a => a.id === currentAssignmentId) || assignments[0];
 
   // All submissions for this assignment
-  const assignmentSubmissions = submissions.filter(s => s.assignmentId === assignment.id);
+  const assignmentSubmissions = assignment ? submissions.filter(s => s.assignmentId === assignment.id) : [];
 
   // Left Column Filter States
   const [studentSearch, setStudentSearch] = useState('');
@@ -84,6 +89,12 @@ export const EvaluationWorkspace: React.FC = () => {
   const [activeAnnotationMode, setActiveAnnotationMode] = useState<'none' | 'highlight' | 'comment'>('none');
   const [mockAnnotations, setMockAnnotations] = useState<string[]>([]);
 
+  // PDF Document Viewer States
+  const [viewMode, setViewMode] = useState<'pdf' | 'text'>('pdf');
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
   // Rubric Scores State (criterionId -> score)
   const [rubricScores, setRubricScores] = useState<Record<string, number>>({});
   const [feedbackText, setFeedbackText] = useState('');
@@ -97,6 +108,137 @@ export const EvaluationWorkspace: React.FC = () => {
   const [showSimilarityModal, setShowSimilarityModal] = useState(false);
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(0);
   const [flagDismissed, setFlagDismissed] = useState(false);
+  const [modalViewMode, setModalViewMode] = useState<'sideBySidePdf' | 'textDiff'>('sideBySidePdf');
+  const [selectedPeerId, setSelectedPeerId] = useState<string | null>(null);
+  const [peerPdfUrl, setPeerPdfUrl] = useState<string | null>(null);
+  const [peerPdfLoading, setPeerPdfLoading] = useState(false);
+
+  // Find matched peer submission for side-by-side comparison
+  const matchedPeerSubmission = React.useMemo(() => {
+    if (!currentSubmission) return null;
+
+    // 1. Try from similarityReport matchedSections
+    const matchedSection = currentSubmission.similarityReport?.matchedSections?.[0];
+    if (matchedSection?.matchedSubmissionId) {
+      const found = submissions.find(s => s.id === matchedSection.matchedSubmissionId);
+      if (found) return found;
+    }
+
+    // 2. Try by student name in matchedSource (e.g. "Peer Submission: athul (filename.pdf)")
+    if (matchedSection?.matchedSource) {
+      const match = matchedSection.matchedSource.match(/Peer Submission:\s*([^(]+)/i);
+      if (match) {
+        const studentName = match[1].trim().toLowerCase();
+        const found = submissions.find(s => 
+          s.assignmentId === currentSubmission.assignmentId &&
+          s.id !== currentSubmission.id &&
+          (s.studentName.toLowerCase().includes(studentName) || studentName.includes(s.studentName.toLowerCase()))
+        );
+        if (found) return found;
+      }
+    }
+
+    // 3. Try matching by identical fileHash
+    if (currentSubmission.fileHash) {
+      const found = submissions.find(s => 
+        s.assignmentId === currentSubmission.assignmentId &&
+        s.id !== currentSubmission.id &&
+        s.fileHash === currentSubmission.fileHash
+      );
+      if (found) return found;
+    }
+
+    // 4. Try matching by identical fileName
+    if (currentSubmission.fileName) {
+      const found = submissions.find(s => 
+        s.assignmentId === currentSubmission.assignmentId &&
+        s.id !== currentSubmission.id &&
+        s.fileName.toLowerCase() === currentSubmission.fileName.toLowerCase()
+      );
+      if (found) return found;
+    }
+
+    // 5. Fallback to any other peer submission in the assignment
+    const otherSubs = submissions.filter(s => s.assignmentId === currentSubmission.assignmentId && s.id !== currentSubmission.id);
+    return otherSubs.length > 0 ? otherSubs[0] : null;
+  }, [currentSubmission, submissions]);
+
+  // Active peer submission (either auto-matched or selected by teacher from dropdown)
+  const activePeerSubmission = React.useMemo(() => {
+    if (selectedPeerId) {
+      return submissions.find(s => s.id === selectedPeerId) || matchedPeerSubmission;
+    }
+    return matchedPeerSubmission;
+  }, [selectedPeerId, submissions, matchedPeerSubmission]);
+
+  // Load peer PDF URL whenever active peer submission changes
+  useEffect(() => {
+    let isMounted = true;
+    if (activePeerSubmission) {
+      setPeerPdfLoading(true);
+      getOrGeneratePdfUrl(activePeerSubmission)
+        .then(url => {
+          if (isMounted) {
+            setPeerPdfUrl(url);
+            setPeerPdfLoading(false);
+          }
+        })
+        .catch(err => {
+          console.error('Error resolving peer PDF:', err);
+          if (isMounted) setPeerPdfLoading(false);
+        });
+    } else {
+      setPeerPdfUrl(null);
+      setPeerPdfLoading(false);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [activePeerSubmission?.id, activePeerSubmission?.pdfStorageKey, activePeerSubmission?.fileUrl]);
+
+  // Load or generate real PDF view for the active submission
+  useEffect(() => {
+    let isMounted = true;
+    if (currentSubmission) {
+      setPdfLoading(true);
+      getOrGeneratePdfUrl(currentSubmission)
+        .then(url => {
+          if (isMounted) {
+            setPdfUrl(url);
+            setPdfLoading(false);
+          }
+        })
+        .catch(err => {
+          console.error('Error resolving submission PDF:', err);
+          if (isMounted) setPdfLoading(false);
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [currentSubmission?.id, currentSubmission?.pdfStorageKey, currentSubmission?.fileUrl, assignment?.id]);
+
+  const handleDownloadPdf = () => {
+    if (!pdfUrl || !currentSubmission) return;
+    const a = document.createElement('a');
+    a.href = pdfUrl;
+    a.download = currentSubmission.fileName.endsWith('.pdf') ? currentSubmission.fileName : `${currentSubmission.fileName}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('Download started for submission PDF', 'info');
+  };
+
+  const handleTeacherPdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0 && currentSubmission) {
+      const file = e.target.files[0];
+      setPdfLoading(true);
+      await attachPdfToSubmission(currentSubmission.id, file);
+      const newUrl = URL.createObjectURL(file);
+      setPdfUrl(newUrl);
+      setPdfLoading(false);
+    }
+  };
 
   // Initialize or load existing evaluation when selected student changes
   useEffect(() => {
@@ -211,10 +353,36 @@ export const EvaluationWorkspace: React.FC = () => {
     showToast('Inline annotation added to preview', 'info');
   };
 
+  if (!assignment) {
+    return (
+      <div className="p-12 text-center max-w-md mx-auto space-y-4">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">No Assignments Available</h3>
+        <p className="text-xs text-slate-500">
+          Create an academic assignment before launching the evaluation workspace.
+        </p>
+        <button
+          onClick={() => navigate('/teacher/assignments/create')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold shadow-sm transition-colors"
+        >
+          Create Assignment
+        </button>
+      </div>
+    );
+  }
+
   if (!currentSubmission) {
     return (
-      <div className="p-10 text-center text-slate-500">
-        No submissions found for this assignment.
+      <div className="p-12 text-center max-w-md mx-auto space-y-4">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">No Submissions Yet</h3>
+        <p className="text-xs text-slate-500">
+          No students have submitted deliverables for "{assignment.title}" yet.
+        </p>
+        <button
+          onClick={() => navigate('/teacher/assignments')}
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-xs font-semibold shadow-sm transition-colors"
+        >
+          Back to Assignments
+        </button>
       </div>
     );
   }
@@ -453,170 +621,318 @@ export const EvaluationWorkspace: React.FC = () => {
         ========================================================================= */}
         <section className="flex-1 bg-slate-200/80 dark:bg-slate-950 flex flex-col min-w-0 overflow-hidden">
           {/* Preview Toolbar */}
-          <div className="h-11 bg-white dark:bg-academic-darkCard border-b border-academic-lightBorder dark:border-academic-darkBorder px-4 flex items-center justify-between shrink-0 shadow-sm">
-            {/* File info */}
-            <div className="flex items-center gap-2 min-w-0 text-xs text-slate-700 dark:text-slate-300">
-              <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-              <span className="font-semibold truncate">{currentSubmission.fileName}</span>
-              <span className="text-slate-400 font-normal">({currentSubmission.fileSize})</span>
+          <div className="h-11 bg-white dark:bg-academic-darkCard border-b border-academic-lightBorder dark:border-academic-darkBorder px-4 flex items-center justify-between shrink-0 shadow-sm gap-2">
+            {/* File info and View Switcher */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0 text-xs text-slate-700 dark:text-slate-300">
+                <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span className="font-semibold truncate max-w-[140px] sm:max-w-[200px]" title={currentSubmission.fileName}>
+                  {currentSubmission.fileName}
+                </span>
+                <span className="text-slate-400 font-normal shrink-0">({currentSubmission.fileSize})</span>
+              </div>
+
+              {/* View Switcher Tabs */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs shrink-0">
+                <button
+                  onClick={() => setViewMode('pdf')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                    viewMode === 'pdf'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="View original submitted PDF document"
+                >
+                  <Eye className="w-3 h-3" />
+                  <span>PDF Document</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('text')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                    viewMode === 'text'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 font-bold shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="View extracted OCR text & annotations"
+                >
+                  <Edit3 className="w-3 h-3" />
+                  <span>OCR & Notes</span>
+                </button>
+              </div>
             </div>
 
-            {/* Document Controls: Pages & Zoom */}
+            {/* Document Controls */}
             <div className="flex items-center gap-2">
-              {/* Annotation Tools */}
-              <div className="flex items-center gap-1 border-r border-slate-200 dark:border-slate-700 pr-2 mr-1">
-                <button
-                  onClick={() => {
-                    const mode = activeAnnotationMode === 'highlight' ? 'none' : 'highlight';
-                    setActiveAnnotationMode(mode);
-                    if (mode === 'highlight') handleAddAnnotation('Highlighted Table Constraints specification');
-                  }}
-                  className={`p-1.5 rounded transition-colors ${
-                    activeAnnotationMode === 'highlight'
-                      ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                  title="Highlight Text Tool"
-                >
-                  <Highlighter className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => {
-                    const mode = activeAnnotationMode === 'comment' ? 'none' : 'comment';
-                    setActiveAnnotationMode(mode);
-                    if (mode === 'comment') handleAddAnnotation('Teacher Comment: Explain cascade policy here');
-                  }}
-                  className={`p-1.5 rounded transition-colors ${
-                    activeAnnotationMode === 'comment'
-                      ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                  title="Add Inline Comment"
-                >
-                  <MessageSquarePlus className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              {viewMode === 'pdf' ? (
+                <div className="flex items-center gap-1.5 text-xs">
+                  {/* Open in New Window */}
+                  {pdfUrl && (
+                    <button
+                      onClick={() => window.open(pdfUrl, '_blank')}
+                      className="flex items-center gap-1 px-2 py-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 transition-colors"
+                      title="Open PDF in new browser tab"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline text-[11px]">Pop Out</span>
+                    </button>
+                  )}
 
-              {/* Page navigation */}
-              <div className="flex items-center gap-1 text-xs">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage <= 1}
-                  className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Previous Page"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-slate-600 dark:text-slate-400 font-medium px-1">
-                  {currentPage} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage >= totalPages}
-                  className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Next Page"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+                  {/* Download PDF */}
+                  {pdfUrl && (
+                    <button
+                      onClick={handleDownloadPdf}
+                      className="flex items-center gap-1 px-2 py-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 transition-colors"
+                      title="Download PDF deliverable"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline text-[11px]">Download</span>
+                    </button>
+                  )}
 
-              {/* Zoom controls */}
-              <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-700 pl-2 text-xs">
-                <button
-                  onClick={() => setZoomLevel(z => Math.max(70, z - 10))}
-                  className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
-                  title="Zoom Out"
-                >
-                  <ZoomOut className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 w-10 text-center">
-                  {zoomLevel}%
-                </span>
-                <button
-                  onClick={() => setZoomLevel(z => Math.min(140, z + 10))}
-                  className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
-                  title="Zoom In"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => setZoomLevel(100)}
-                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  title="Reset Zoom"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Academic Document Canvas */}
-          <div className="flex-1 overflow-y-auto p-6 flex justify-center items-start">
-            <div
-              style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
-              className="w-full max-w-2xl bg-white text-slate-900 shadow-lg border border-slate-300 p-8 rounded-sm min-h-[700px] transition-transform duration-100 space-y-6"
-            >
-              {/* Academic Header */}
-              <div className="border-b-2 border-slate-800 pb-4 flex items-start justify-between">
-                <div>
-                  <h1 className="text-lg font-bold font-serif text-slate-900 tracking-tight">
-                    {assignment.title}
-                  </h1>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    Course: {assignment.courseName} ({assignment.courseCode})
-                  </p>
+                  {/* Attach / Replace PDF */}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={handleTeacherPdfUpload}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1 px-2 py-1 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded border border-indigo-200 dark:border-indigo-800 transition-colors"
+                    title="Attach or replace PDF file for this submission"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-medium">Attach PDF</span>
+                  </button>
                 </div>
-                <div className="text-right text-xs">
-                  <p className="font-bold text-slate-900">{currentSubmission.studentName}</p>
-                  <p className="font-mono text-slate-600">{currentSubmission.regNo}</p>
-                  <p className="text-[10px] text-slate-500">{currentSubmission.submittedAt}</p>
-                </div>
-              </div>
-
-              {/* Active Annotations Banner */}
-              {mockAnnotations.length > 0 && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs space-y-1">
-                  <div className="font-bold text-amber-800 flex items-center gap-1">
-                    <MessageSquarePlus className="w-3.5 h-3.5" />
-                    <span>Instructor Document Annotations ({mockAnnotations.length})</span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {/* Annotation Tools */}
+                  <div className="flex items-center gap-1 border-r border-slate-200 dark:border-slate-700 pr-2 mr-1">
+                    <button
+                      onClick={() => {
+                        const mode = activeAnnotationMode === 'highlight' ? 'none' : 'highlight';
+                        setActiveAnnotationMode(mode);
+                        if (mode === 'highlight') handleAddAnnotation('Highlighted Table Constraints specification');
+                      }}
+                      className={`p-1.5 rounded transition-colors ${
+                        activeAnnotationMode === 'highlight'
+                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                      title="Highlight Text Tool"
+                    >
+                      <Highlighter className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const mode = activeAnnotationMode === 'comment' ? 'none' : 'comment';
+                        setActiveAnnotationMode(mode);
+                        if (mode === 'comment') handleAddAnnotation('Teacher Comment: Explain cascade policy here');
+                      }}
+                      className={`p-1.5 rounded transition-colors ${
+                        activeAnnotationMode === 'comment'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                      title="Add Inline Comment"
+                    >
+                      <MessageSquarePlus className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  {mockAnnotations.map((note, i) => (
-                    <div key={i} className="text-amber-900 text-[11px] pl-2 border-l-2 border-amber-400">
-                      • {note}
-                    </div>
-                  ))}
+
+                  {/* Page navigation */}
+                  <div className="flex items-center gap-1 text-xs">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1}
+                      className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-slate-600 dark:text-slate-400 font-medium px-1">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages}
+                      className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none"
+                      title="Next Page"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Zoom controls */}
+                  <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-700 pl-2 text-xs">
+                    <button
+                      onClick={() => setZoomLevel(z => Math.max(70, z - 10))}
+                      className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                      title="Zoom Out"
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 w-10 text-center">
+                      {zoomLevel}%
+                    </span>
+                    <button
+                      onClick={() => setZoomLevel(z => Math.min(140, z + 10))}
+                      className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                      title="Zoom In"
+                    >
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setZoomLevel(100)}
+                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      title="Reset Zoom"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
               )}
-
-              {/* Page Content */}
-              <div className="space-y-4 text-xs leading-relaxed text-slate-800 font-serif">
-                <h2 className="text-sm font-bold font-sans text-slate-900 border-b border-slate-200 pb-1">
-                  {activePageData.title}
-                </h2>
-
-                <div className="whitespace-pre-line text-xs font-sans">
-                  {activePageData.content}
-                </div>
-
-                {activePageData.codeSnippet && (
-                  <div className="mt-3">
-                    <div className="text-[11px] font-mono font-semibold text-slate-500 mb-1">
-                      Listing: Structured DDL & Execution Benchmark
-                    </div>
-                    <pre className="p-3.5 bg-slate-900 text-emerald-400 rounded-md font-mono text-[11px] overflow-x-auto leading-normal">
-                      <code>{activePageData.codeSnippet}</code>
-                    </pre>
-                  </div>
-                )}
-              </div>
-
-              {/* Document Page Footer */}
-              <div className="pt-8 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                <span>GradeFlow Submission Viewer — Secure Academic Sandbox</span>
-                <span>Page {currentPage} of {totalPages}</span>
-              </div>
             </div>
           </div>
+
+          {/* VIEW MODE 1: NATIVE PDF DOCUMENT EMBED */}
+          {viewMode === 'pdf' ? (
+            <div className="flex-1 w-full h-full relative bg-slate-900/90 dark:bg-slate-950 flex flex-col overflow-hidden">
+              {pdfLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
+                  <RefreshCw className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
+                  <p className="text-sm font-semibold text-slate-200">Loading student PDF deliverable...</p>
+                  <p className="text-xs text-slate-500 mt-1">Rendering high-resolution document canvas</p>
+                </div>
+              ) : pdfUrl ? (
+                <object
+                  data={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1&view=FitH`}
+                  type="application/pdf"
+                  className="w-full h-full border-0 flex-1 bg-white"
+                >
+                  <iframe
+                    src={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1&view=FitH`}
+                    title={currentSubmission.fileName}
+                    className="w-full h-full border-0 flex-1 bg-white"
+                  >
+                    <div className="p-8 text-center text-slate-300">
+                      <p className="text-xs">Your browser does not support inline PDF viewing.</p>
+                      <a
+                        href={pdfUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs underline text-indigo-400 font-semibold mt-2 inline-block"
+                      >
+                        Click here to open PDF in a new tab
+                      </a>
+                    </div>
+                  </iframe>
+                </object>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 max-w-md mx-auto space-y-3">
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto shadow-sm">
+                    <FileText className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-100">
+                      Original PDF File Not Cached
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Deliverable: <span className="font-semibold text-indigo-300 font-mono">{currentSubmission.fileName}</span> ({currentSubmission.fileSize})
+                    </p>
+                    <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                      This submission was created in a previous session before PDF file caching was enabled in this browser. Please attach the student's original PDF to inspect the document.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-sm transition-colors"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>Attach {currentSubmission.fileName}</span>
+                    </button>
+                    <button
+                      onClick={() => setViewMode('text')}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-colors"
+                    >
+                      View Text & Notes
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* VIEW MODE 2: EXTRACTED TEXT & OCR ACADEMIC CANVAS */
+            <div className="flex-1 overflow-y-auto p-6 flex justify-center items-start">
+              <div
+                style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
+                className="w-full max-w-2xl bg-white text-slate-900 shadow-lg border border-slate-300 p-8 rounded-sm min-h-[700px] transition-transform duration-100 space-y-6"
+              >
+                {/* Academic Header */}
+                <div className="border-b-2 border-slate-800 pb-4 flex items-start justify-between">
+                  <div>
+                    <h1 className="text-lg font-bold font-serif text-slate-900 tracking-tight">
+                      {assignment.title}
+                    </h1>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Course: {assignment.courseName} ({assignment.courseCode})
+                    </p>
+                  </div>
+                  <div className="text-right text-xs">
+                    <p className="font-bold text-slate-900">{currentSubmission.studentName}</p>
+                    <p className="font-mono text-slate-600">{currentSubmission.regNo}</p>
+                    <p className="text-[10px] text-slate-500">{currentSubmission.submittedAt}</p>
+                  </div>
+                </div>
+
+                {/* Active Annotations Banner */}
+                {mockAnnotations.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs space-y-1">
+                    <div className="font-bold text-amber-800 flex items-center gap-1">
+                      <MessageSquarePlus className="w-3.5 h-3.5" />
+                      <span>Instructor Document Annotations ({mockAnnotations.length})</span>
+                    </div>
+                    {mockAnnotations.map((note, i) => (
+                      <div key={i} className="text-amber-900 text-[11px] pl-2 border-l-2 border-amber-400">
+                        • {note}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Page Content */}
+                <div className="space-y-4 text-xs leading-relaxed text-slate-800 font-serif">
+                  <h2 className="text-sm font-bold font-sans text-slate-900 border-b border-slate-200 pb-1">
+                    {activePageData.title}
+                  </h2>
+
+                  <div className="whitespace-pre-line text-xs font-sans">
+                    {activePageData.content}
+                  </div>
+
+                  {activePageData.codeSnippet && (
+                    <div className="mt-3">
+                      <div className="text-[11px] font-mono font-semibold text-slate-500 mb-1">
+                        Listing: Structured DDL & Execution Benchmark
+                      </div>
+                      <pre className="p-3.5 bg-slate-900 text-emerald-400 rounded-md font-mono text-[11px] overflow-x-auto leading-normal">
+                        <code>{activePageData.codeSnippet}</code>
+                      </pre>
+                    </div>
+                  )}
+                </div>
+
+                {/* Document Page Footer */}
+                <div className="pt-8 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                  <span>GradeFlow Submission Viewer — Secure Academic Sandbox</span>
+                  <span>Page {currentPage} of {totalPages}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* =========================================================================
@@ -860,7 +1176,9 @@ export const EvaluationWorkspace: React.FC = () => {
                     Similarity exceeds the configured {currentSubmission.similarityReport.threshold}% threshold.
                   </p>
                   <p className="text-[10px] text-slate-500 leading-normal">
-                    Matched with Institutional Archive (Fall 2025) and external sources. Note: Similarity does not automatically imply plagiarism.
+                    {currentSubmission.similarityReport?.matchedSections?.[0]?.matchedSource
+                      ? `Matched with ${currentSubmission.similarityReport.matchedSections[0].matchedSource}. Note: Similarity does not automatically imply plagiarism.`
+                      : 'Matched with Institutional Archive (Fall 2025) and external sources. Note: Similarity does not automatically imply plagiarism.'}
                   </p>
                   <button
                     type="button"
@@ -981,11 +1299,14 @@ export const EvaluationWorkspace: React.FC = () => {
       {/* =========================================================================
           MODAL: DETAILED SIDE-BY-SIDE SIMILARITY COMPARISON
       ========================================================================= */}
+      {/* =========================================================================
+          MODAL: DETAILED SIDE-BY-SIDE SIMILARITY COMPARISON
+      ========================================================================= */}
       {showSimilarityModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-none flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-xl max-w-7xl w-full h-[92vh] max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
             {/* Modal Header */}
-            <div className="px-5 py-3.5 border-b border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between bg-slate-50 dark:bg-slate-900/80">
+            <div className="px-5 py-3 border-b border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between bg-slate-50 dark:bg-slate-900/80 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-lg">
                   <Scale className="w-5 h-5" />
@@ -1005,112 +1326,284 @@ export const EvaluationWorkspace: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => setShowSimilarityModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Academic Safeguard Disclaimer Banner */}
-            <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/80 px-5 py-2.5 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">
-                <span className="font-bold">Explicit Academic Disclaimer:</span> Textual and syntactic similarity detected by automated engines does <span className="underline font-semibold">not automatically constitute plagiarism</span>. Shared templates, standard course boilerplate, and algorithm definitions frequently produce high overlap scores. Final evaluation and disciplinary decisions strictly require professional instructor judgment.
-              </div>
-            </div>
-
-            {/* Source Overview Bar */}
-            <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-900 border-b border-academic-lightBorder dark:border-academic-darkBorder flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-4">
-                <div>
-                  <span className="text-slate-400 text-[10px] uppercase font-semibold block">Primary Matched Archive</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-xs">
-                    {mockSimilarityComparison.matchedSource}
-                  </span>
-                </div>
-                <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
-                <div>
-                  <span className="text-slate-400 text-[10px] uppercase font-semibold block">Secondary Match</span>
-                  <span className="font-mono text-slate-600 dark:text-slate-400 text-xs">
-                    {mockSimilarityComparison.secondarySource} ({mockSimilarityComparison.secondarySimilarity}%)
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <span className="text-[11px] text-slate-400 mr-1">Matched Segment:</span>
-                {mockSimilarityComparison.matchedSegments.map((seg, idx) => (
+              <div className="flex items-center gap-3">
+                {/* View Mode Toggle: Side-by-Side PDFs vs Text Diff */}
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-100 dark:bg-slate-800 text-xs font-medium">
                   <button
-                    key={idx}
-                    onClick={() => setActiveSegmentIndex(idx)}
-                    className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-                      activeSegmentIndex === idx
-                        ? 'bg-indigo-600 text-white font-semibold'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700'
+                    onClick={() => setModalViewMode('sideBySidePdf')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
+                      modalViewMode === 'sideBySidePdf'
+                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-bold shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
-                    #{idx + 1} ({seg.similarity}%)
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Side-by-Side PDFs</span>
                   </button>
-                ))}
+                  <button
+                    onClick={() => setModalViewMode('textDiff')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
+                      modalViewMode === 'textDiff'
+                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-bold shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    <span>Text & Shingle Diff</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setShowSimilarityModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  title="Close modal"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             </div>
 
-            {/* Side-by-Side Comparison Columns */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Left Column: Student Submission */}
-              <div className="border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg flex flex-col bg-white dark:bg-slate-900/60 overflow-hidden">
-                <div className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800/80 border-b border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                      Student Submission Deliverable
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400 font-semibold">
-                    {currentSubmission.fileName}
+            {/* Source Overview & Peer Selector Bar */}
+            <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-900 border-b border-academic-lightBorder dark:border-academic-darkBorder flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+              <div className="flex flex-wrap items-center gap-4">
+                <div>
+                  <span className="text-slate-400 text-[10px] uppercase font-semibold block">Primary Matched Source</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-xs">
+                    {currentSubmission.similarityReport?.matchedSections?.[0]?.matchedSource || mockSimilarityComparison.matchedSource}
                   </span>
                 </div>
 
-                <div className="p-4 flex-1 space-y-3 font-mono text-xs overflow-y-auto">
-                  <div className="text-[11px] font-sans font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                    {mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.section}
+                {assignmentSubmissions.filter(s => s.id !== currentSubmission.id).length > 0 && (
+                  <div className="flex items-center gap-2 pl-3 border-l border-slate-200 dark:border-slate-700">
+                    <span className="text-[11px] font-semibold text-slate-500">Compare Against:</span>
+                    <select
+                      value={activePeerSubmission?.id || ''}
+                      onChange={(e) => setSelectedPeerId(e.target.value)}
+                      className="px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                    >
+                      {assignmentSubmissions
+                        .filter(s => s.id !== currentSubmission.id)
+                        .map(peer => (
+                          <option key={peer.id} value={peer.id}>
+                            {peer.studentName} ({peer.fileName}) {peer.id === matchedPeerSubmission?.id ? '★ (Auto-Matched)' : ''}
+                          </option>
+                        ))}
+                    </select>
                   </div>
-                  <div className="p-3 bg-amber-50/70 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded text-amber-950 dark:text-amber-100 leading-relaxed whitespace-pre-wrap">
-                    <mark className="bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 px-1 py-0.5 rounded font-mono font-medium">
-                      {mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.studentText}
-                    </mark>
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* Right Column: Matched Archive Source */}
-              <div className="border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg flex flex-col bg-white dark:bg-slate-900/60 overflow-hidden">
-                <div className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800/80 border-b border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Scale className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                      Institutional Archive & Benchmark Source
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-rose-600 dark:text-rose-400 font-bold">
-                    {mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.similarity}% match
-                  </span>
-                </div>
-
-                <div className="p-4 flex-1 space-y-3 font-mono text-xs overflow-y-auto">
-                  <div className="text-[11px] font-sans font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
-                    Archive Reference File
-                  </div>
-                  <div className="p-3 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 rounded text-rose-950 dark:text-rose-100 leading-relaxed whitespace-pre-wrap">
-                    <mark className="bg-rose-200 dark:bg-rose-900 text-rose-950 dark:text-rose-100 px-1 py-0.5 rounded font-mono font-medium">
-                      {mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.sourceText}
-                    </mark>
-                  </div>
-                </div>
+              <div className="flex items-center gap-2">
+                {pdfUrl && (
+                  <button
+                    onClick={() => window.open(pdfUrl, '_blank')}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    title="Open Student PDF in a new browser tab"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    <span>Open Student PDF</span>
+                  </button>
+                )}
+                {peerPdfUrl && (
+                  <button
+                    onClick={() => window.open(peerPdfUrl, '_blank')}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
+                    title="Open Matched Peer PDF in a new browser tab"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    <span>Open Matched PDF</span>
+                  </button>
+                )}
               </div>
             </div>
+
+            {/* Modal Body: Side-by-Side PDFs or Text Diff */}
+            {modalViewMode === 'sideBySidePdf' ? (
+              <div className="flex-1 min-h-0 p-3 bg-slate-100 dark:bg-slate-950/80 grid grid-cols-1 md:grid-cols-2 gap-3 overflow-hidden">
+                {/* Left Column: Student Submission PDF */}
+                <div className="border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg flex flex-col bg-white dark:bg-slate-900 overflow-hidden shadow-xs h-full">
+                  <div className="px-3.5 py-2 bg-slate-50 dark:bg-slate-800/90 border-b border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        {currentSubmission.studentName} ({currentSubmission.regNo})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-slate-500 font-semibold truncate max-w-[150px]">
+                        {currentSubmission.fileName}
+                      </span>
+                      {pdfUrl && (
+                        <button
+                          onClick={() => {
+                            const a = document.createElement('a');
+                            a.href = pdfUrl;
+                            a.download = currentSubmission.fileName;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                          title="Download Student PDF"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 w-full h-full relative bg-slate-900/90 dark:bg-slate-950 flex flex-col overflow-hidden">
+                    {pdfLoading ? (
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
+                        <RefreshCw className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
+                        <p className="text-xs font-semibold text-slate-200">Rendering student document...</p>
+                      </div>
+                    ) : pdfUrl ? (
+                      <object
+                        data={`${pdfUrl}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`}
+                        type="application/pdf"
+                        className="w-full h-full border-0 flex-1 bg-white"
+                      >
+                        <iframe
+                          src={`${pdfUrl}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`}
+                          title={currentSubmission.fileName}
+                          className="w-full h-full border-0 flex-1 bg-white"
+                        />
+                      </object>
+                    ) : (
+                      <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900">
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded mb-2 text-amber-800 dark:text-amber-200 text-xs">
+                          Direct PDF stream unavailable. Displaying extracted deliverable text:
+                        </div>
+                        <pre className="whitespace-pre-wrap leading-relaxed">
+                          {currentSubmission.extractedText || currentSubmission.pages?.[0]?.content || 'No text extracted.'}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column: Matched Peer Submission PDF */}
+                <div className="border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg flex flex-col bg-white dark:bg-slate-900 overflow-hidden shadow-xs h-full">
+                  <div className="px-3.5 py-2 bg-slate-50 dark:bg-slate-800/90 border-b border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Scale className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        {activePeerSubmission ? `${activePeerSubmission.studentName} (${activePeerSubmission.regNo})` : 'Matched Source File'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rose" size="sm">
+                        {currentSubmission.similarityScore}% Match
+                      </Badge>
+                      {peerPdfUrl && (
+                        <button
+                          onClick={() => {
+                            const a = document.createElement('a');
+                            a.href = peerPdfUrl;
+                            a.download = activePeerSubmission?.fileName || 'matched_peer.pdf';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                          title="Download Matched PDF"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 w-full h-full relative bg-slate-900/90 dark:bg-slate-950 flex flex-col overflow-hidden">
+                    {peerPdfLoading ? (
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
+                        <RefreshCw className="w-8 h-8 animate-spin text-rose-500 mb-2" />
+                        <p className="text-xs font-semibold text-slate-200">Rendering matched peer document...</p>
+                      </div>
+                    ) : peerPdfUrl ? (
+                      <object
+                        data={`${peerPdfUrl}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`}
+                        type="application/pdf"
+                        className="w-full h-full border-0 flex-1 bg-white"
+                      >
+                        <iframe
+                          src={`${peerPdfUrl}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`}
+                          title={activePeerSubmission?.fileName || 'Matched Peer Document'}
+                          className="w-full h-full border-0 flex-1 bg-white"
+                        />
+                      </object>
+                    ) : (
+                      <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900">
+                        <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded mb-2 text-rose-800 dark:text-rose-200 text-xs">
+                          {activePeerSubmission 
+                            ? `Displaying extracted text from ${activePeerSubmission.studentName}'s deliverable:`
+                            : 'Institutional benchmark archive reference:'}
+                        </div>
+                        <pre className="whitespace-pre-wrap leading-relaxed">
+                          {activePeerSubmission?.extractedText || activePeerSubmission?.pages?.[0]?.content || currentSubmission.similarityReport?.matchedSections?.[0]?.matchedSnippet || mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.sourceText || 'No reference text available.'}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Text & Shingle Diff Mode */
+              <div className="flex-1 min-h-0 overflow-y-auto p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left Column: Student Submission */}
+                <div className="border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg flex flex-col bg-white dark:bg-slate-900/60 overflow-hidden">
+                  <div className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800/80 border-b border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        Student Submission Deliverable
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 font-semibold">
+                      {currentSubmission.fileName}
+                    </span>
+                  </div>
+
+                  <div className="p-4 flex-1 space-y-3 font-mono text-xs overflow-y-auto">
+                    <div className="text-[11px] font-sans font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                      {currentSubmission.similarityReport?.matchedSections?.[0]?.sectionTitle || mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.section}
+                    </div>
+                    <div className="p-3 bg-amber-50/70 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded text-amber-950 dark:text-amber-100 leading-relaxed whitespace-pre-wrap">
+                      <mark className="bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 px-1 py-0.5 rounded font-mono font-medium">
+                        {currentSubmission.pages?.[0]?.content || mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.studentText}
+                      </mark>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Matched Archive Source */}
+                <div className="border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg flex flex-col bg-white dark:bg-slate-900/60 overflow-hidden">
+                  <div className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800/80 border-b border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Scale className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        Institutional Archive & Benchmark Source
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-rose-600 dark:text-rose-400 font-bold">
+                      {currentSubmission.similarityScore || mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.similarity}% match
+                    </span>
+                  </div>
+
+                  <div className="p-4 flex-1 space-y-3 font-mono text-xs overflow-y-auto">
+                    <div className="text-[11px] font-sans font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+                      {currentSubmission.similarityReport?.matchedSections?.[0]?.matchedSource || 'Archive Reference File'}
+                    </div>
+                    <div className="p-3 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 rounded text-rose-950 dark:text-rose-100 leading-relaxed whitespace-pre-wrap">
+                      <mark className="bg-rose-200 dark:bg-rose-900 text-rose-950 dark:text-rose-100 px-1 py-0.5 rounded font-mono font-medium">
+                        {currentSubmission.similarityReport?.matchedSections?.[0]?.matchedSnippet || mockSimilarityComparison.matchedSegments[activeSegmentIndex]?.sourceText}
+                      </mark>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Modal Bottom Actions */}
             <div className="px-5 py-3 border-t border-academic-lightBorder dark:border-academic-darkBorder bg-slate-50 dark:bg-slate-900 flex flex-wrap items-center justify-between gap-2">

@@ -61,8 +61,24 @@ export const StudentCourses: React.FC = () => {
       </div>
 
       {/* Courses Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {courses.map((course) => {
+      {courses.length === 0 ? (
+        <div className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-12 text-center space-y-3">
+          <BookOpen className="w-12 h-12 text-slate-400 mx-auto" />
+          <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">No courses available yet</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Your instructor hasn't created any courses yet. Once a course is created, join with the enrollment code.
+          </p>
+          <button
+            onClick={() => setShowJoinModal(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Join Course with Code</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {courses.map((course) => {
           const courseAssignments = assignments.filter(
             a => a.courseId === course.id || a.courseCode === course.code
           );
@@ -92,7 +108,7 @@ export const StudentCourses: React.FC = () => {
                 </p>
 
                 <div className="pt-3 border-t border-academic-lightBorder dark:border-academic-darkBorder flex items-center justify-between text-xs text-slate-500">
-                  <span>Instructor: <strong>{course.teacherName || 'Prof. Sarah Jenkins'}</strong></span>
+                  <span>Instructor: <strong>{course.teacherName || 'Faculty Instructor'}</strong></span>
                   <span className="font-semibold text-slate-700 dark:text-slate-300">
                     {courseAssignments.length} Assignments
                   </span>
@@ -110,6 +126,7 @@ export const StudentCourses: React.FC = () => {
           );
         })}
       </div>
+      )}
 
       {/* COURSE ASSIGNMENTS INSPECTION MODAL */}
       {selectedCourse && (
@@ -130,7 +147,7 @@ export const StudentCourses: React.FC = () => {
                   {selectedCourse.name}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Instructor: <strong>{selectedCourse.teacherName || 'Prof. Sarah Jenkins'}</strong>
+                  Instructor: <strong>{selectedCourse.teacherName || 'Faculty Instructor'}</strong>
                 </p>
               </div>
 

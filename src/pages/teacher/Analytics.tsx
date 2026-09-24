@@ -23,73 +23,166 @@ import {
 } from 'lucide-react';
 
 export const Analytics: React.FC = () => {
-  const { courses, assignments, isDarkMode } = useApp();
+  const { courses, assignments, submissions, isDarkMode } = useApp();
 
   const [selectedCourseId, setSelectedCourseId] = useState<string>('all');
   const [selectedSection, setSelectedSection] = useState<string>('all');
 
-  // Summary Metrics
+  // Filter assignments by course if selected
+  const filteredAssignments = assignments.filter(a => {
+    if (selectedCourseId !== 'all' && a.courseId !== selectedCourseId) return false;
+    return true;
+  });
+
+  const filteredCourses = selectedCourseId === 'all' 
+    ? courses 
+    : courses.filter(c => c.id === selectedCourseId);
+
+  // Relevant submissions for the selected filter
+  const relevantSubmissions = submissions.filter(s => {
+    if (selectedCourseId === 'all') return true;
+    const asg = assignments.find(a => a.id === s.assignmentId);
+    return asg ? asg.courseId === selectedCourseId : false;
+  });
+
+  // Evaluated submissions with valid totalScore & maxScore
+  const evaluatedSubmissions = relevantSubmissions.filter(
+    s => s.evaluationStatus === 'Evaluated' && s.evaluation && s.evaluation.maxScore > 0
+  );
+
+  const totalEvaluated = evaluatedSubmissions.length;
+
+  // Calculate Summary Statistics
+  let avgPercentageVal = 0;
+  let highestPercentageVal = 0;
+  let lowestPercentageVal = 100;
+  let topStudentInfo = 'No submissions evaluated yet';
+  let lowStudentInfo = 'No submissions evaluated yet';
+  let passCount = 0;
+
+  if (totalEvaluated > 0) {
+    let sumPercentage = 0;
+    evaluatedSubmissions.forEach((sub, idx) => {
+      const pct = (sub.evaluation!.totalScore / sub.evaluation!.maxScore) * 100;
+      sumPercentage += pct;
+
+      if (idx === 0 || pct > highestPercentageVal) {
+        highestPercentageVal = pct;
+        const asg = assignments.find(a => a.id === sub.assignmentId);
+        topStudentInfo = `${sub.studentName} (${asg?.courseCode || 'DBMS'})`;
+      }
+
+      if (idx === 0 || pct < lowestPercentageVal) {
+        lowestPercentageVal = pct;
+        const asg = assignments.find(a => a.id === sub.assignmentId);
+        lowStudentInfo = `${sub.studentName} (${pct.toFixed(0)}%)`;
+      }
+
+      if (pct >= 50) {
+        passCount++;
+      }
+    });
+
+    avgPercentageVal = sumPercentage / totalEvaluated;
+  }
+
   const summaryStats = {
-    averageMarks: '81.4%',
-    highestScore: '98%',
-    lowestScore: '54%',
-    passPercentage: '96.2%',
-    totalEvaluated: 114
+    averageMarks: totalEvaluated > 0 ? `${avgPercentageVal.toFixed(1)}%` : '—',
+    highestScore: totalEvaluated > 0 ? `${highestPercentageVal.toFixed(0)}%` : '—',
+    topStudentInfo,
+    lowestScore: totalEvaluated > 0 ? `${lowestPercentageVal.toFixed(0)}%` : '—',
+    lowStudentInfo: totalEvaluated > 0 ? lowStudentInfo : 'Awaiting evaluations',
+    passPercentage: totalEvaluated > 0 ? `${((passCount / totalEvaluated) * 100).toFixed(1)}%` : '—',
+    totalEvaluated
   };
 
   // Grade Distribution Data (A+, A, B+, B, C, F)
+  const gradeCounts: Record<string, number> = {
+    'A+': 0,
+    'A': 0,
+    'B+': 0,
+    'B': 0,
+    'C': 0,
+    'F': 0
+  };
+
+  evaluatedSubmissions.forEach(sub => {
+    const pct = (sub.evaluation!.totalScore / sub.evaluation!.maxScore) * 100;
+    if (pct >= 90) gradeCounts['A+']++;
+    else if (pct >= 80) gradeCounts['A']++;
+    else if (pct >= 70) gradeCounts['B+']++;
+    else if (pct >= 60) gradeCounts['B']++;
+    else if (pct >= 50) gradeCounts['C']++;
+    else gradeCounts['F']++;
+  });
+
   const gradeDistributionData = [
-    { grade: 'A+', students: 18, color: '#4f46e5' },
-    { grade: 'A', students: 34, color: '#6366f1' },
-    { grade: 'B+', students: 28, color: '#3b82f6' },
-    { grade: 'B', students: 19, color: '#0ea5e9' },
-    { grade: 'C', students: 11, color: '#f59e0b' },
-    { grade: 'F', students: 4, color: '#ef4444' },
+    { grade: 'A+', students: gradeCounts['A+'], color: '#4f46e5' },
+    { grade: 'A', students: gradeCounts['A'], color: '#6366f1' },
+    { grade: 'B+', students: gradeCounts['B+'], color: '#3b82f6' },
+    { grade: 'B', students: gradeCounts['B'], color: '#0ea5e9' },
+    { grade: 'C', students: gradeCounts['C'], color: '#f59e0b' },
+    { grade: 'F', students: gradeCounts['F'], color: '#ef4444' },
   ];
 
-  // Student Performance Trend across 4 assignments
-  const performanceTrendData = [
-    { assignment: 'Assignment 1', avgScore: 74, highest: 92, passing: 88 },
-    { assignment: 'Assignment 2', avgScore: 78, highest: 95, passing: 91 },
-    { assignment: 'Assignment 3', avgScore: 82, highest: 96, passing: 94 },
-    { assignment: 'Assignment 4', avgScore: 85, highest: 98, passing: 96 },
-  ];
-
-  // Assignment Performance Breakdown
-  const assignmentPerformanceList = [
-    {
-      name: 'Database Schema Design & Normalization',
-      course: 'DBMS (CSE2004)',
-      avgScore: '83.5%',
-      submissionRate: '94%',
-      lateRate: '7%',
-      evalCompletion: '100%'
-    },
-    {
-      name: 'React & State Architecture Portfolio',
-      course: 'Web Tech (CSE3002)',
-      avgScore: '79.2%',
-      submissionRate: '88%',
-      lateRate: '12%',
-      evalCompletion: '82%'
-    },
-    {
-      name: 'Divide & Conquer Empirical Benchmarks',
-      course: 'Algorithms (CSE2001)',
-      avgScore: '86.1%',
-      submissionRate: '91%',
-      lateRate: '4%',
-      evalCompletion: '90%'
-    },
-    {
-      name: 'Concurrency & Semaphore Synchronization Lab',
-      course: 'OS (CSE2003)',
-      avgScore: '76.8%',
-      submissionRate: '85%',
-      lateRate: '9%',
-      evalCompletion: '75%'
+  // Longitudinal Performance Trend across Sequential Assignments
+  const performanceTrendData = filteredAssignments.map(asg => {
+    const asgSubs = submissions.filter(s => s.assignmentId === asg.id && s.evaluation && s.evaluation.maxScore > 0);
+    if (asgSubs.length === 0) {
+      return {
+        assignment: asg.title.length > 18 ? `${asg.title.slice(0, 16)}...` : asg.title,
+        avgScore: 0,
+        highest: 0,
+        passing: 0,
+        evaluatedCount: 0
+      };
     }
-  ];
+
+    const percentages = asgSubs.map(s => (s.evaluation!.totalScore / s.evaluation!.maxScore) * 100);
+    const avgScore = Math.round(percentages.reduce((a, b) => a + b, 0) / percentages.length);
+    const highest = Math.round(Math.max(...percentages));
+    const passing = Math.round((percentages.filter(p => p >= 50).length / percentages.length) * 100);
+
+    return {
+      assignment: asg.title.length > 18 ? `${asg.title.slice(0, 16)}...` : asg.title,
+      avgScore,
+      highest,
+      passing,
+      evaluatedCount: asgSubs.length
+    };
+  });
+
+  // Assignment Performance Breakdown List
+  const assignmentPerformanceList = filteredAssignments.map(asg => {
+    const asgSubs = submissions.filter(s => s.assignmentId === asg.id);
+    const asgEvalSubs = asgSubs.filter(s => s.evaluation && s.evaluation.maxScore > 0);
+
+    const avgPct = asgEvalSubs.length > 0
+      ? `${(asgEvalSubs.reduce((acc, s) => acc + (s.evaluation!.totalScore / s.evaluation!.maxScore) * 100, 0) / asgEvalSubs.length).toFixed(1)}%`
+      : '—';
+
+    const subRate = asg.totalStudents > 0
+      ? `${Math.round((asg.submittedCount / asg.totalStudents) * 100)}%`
+      : (asgSubs.length > 0 ? '100%' : '0%');
+
+    const lateCount = asgSubs.filter(s => s.status === 'Late').length;
+    const lateRate = asgSubs.length > 0
+      ? `${Math.round((lateCount / asgSubs.length) * 100)}%`
+      : '0%';
+
+    const evalRate = asgSubs.length > 0
+      ? `${Math.round((asgEvalSubs.length / asgSubs.length) * 100)}%`
+      : '—';
+
+    return {
+      name: asg.title,
+      course: asg.courseCode || 'COURSE',
+      avgScore: avgPct,
+      submissionRate: subRate,
+      lateRate,
+      evalCompletion: evalRate
+    };
+  });
 
   const gridColor = isDarkMode ? '#1f293d' : '#e2e8f0';
   const textColor = isDarkMode ? '#94a3b8' : '#64748b';
@@ -147,7 +240,7 @@ export const Analytics: React.FC = () => {
           </div>
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 font-medium">
             <TrendingUp className="w-3 h-3" />
-            <span>+3.2% vs last term</span>
+            <span>{totalEvaluated} graded deliverable{totalEvaluated === 1 ? '' : 's'}</span>
           </p>
         </div>
 
@@ -156,8 +249,8 @@ export const Analytics: React.FC = () => {
           <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
             {summaryStats.highestScore}
           </div>
-          <p className="text-[11px] text-slate-400 mt-1 font-medium">
-            Priya Sharma (DBMS)
+          <p className="text-[11px] text-slate-400 mt-1 font-medium truncate" title={summaryStats.topStudentInfo}>
+            {summaryStats.topStudentInfo}
           </p>
         </div>
 
@@ -166,8 +259,8 @@ export const Analytics: React.FC = () => {
           <div className="text-2xl font-bold text-slate-700 dark:text-slate-300 mt-1">
             {summaryStats.lowestScore}
           </div>
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
-            Intervention advised
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium truncate" title={summaryStats.lowStudentInfo}>
+            {summaryStats.lowStudentInfo}
           </p>
         </div>
 
@@ -177,7 +270,7 @@ export const Analytics: React.FC = () => {
             {summaryStats.passPercentage}
           </div>
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
-            High academic retention
+            {totalEvaluated > 0 ? 'Passing benchmark: >= 50%' : 'Awaiting evaluations'}
           </p>
         </div>
 
@@ -187,7 +280,7 @@ export const Analytics: React.FC = () => {
             {summaryStats.totalEvaluated}
           </div>
           <p className="text-[11px] text-slate-400 mt-1 font-medium">
-            Across 4 active courses
+            Across {filteredCourses.length} active course{filteredCourses.length === 1 ? '' : 's'}
           </p>
         </div>
       </div>
@@ -206,28 +299,35 @@ export const Analytics: React.FC = () => {
               </p>
             </div>
             <span className="text-xs font-mono font-semibold text-slate-500">
-              Total: 114 Students
+              Total: {totalEvaluated} Evaluated
             </span>
           </div>
 
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={gradeDistributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                <XAxis dataKey="grade" stroke={textColor} fontSize={12} tickLine={false} />
-                <YAxis stroke={textColor} fontSize={12} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: isDarkMode ? '#172033' : '#ffffff',
-                    borderColor: isDarkMode ? '#334155' : '#e2e8f0',
-                    color: isDarkMode ? '#f8fafc' : '#0f172a',
-                    fontSize: '12px',
-                    borderRadius: '6px'
-                  }}
-                />
-                <Bar dataKey="students" fill="#4f46e5" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {totalEvaluated === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs">
+                <BarChart3 className="w-8 h-8 mb-2 opacity-40" />
+                <p>No graded submissions available yet to display distribution.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={gradeDistributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                  <XAxis dataKey="grade" stroke={textColor} fontSize={12} tickLine={false} />
+                  <YAxis stroke={textColor} fontSize={12} tickLine={false} allowDecimals={false} />
+                  <Tooltip 
+                    contentStyle={{
+                      backgroundColor: isDarkMode ? '#172033' : '#ffffff',
+                      borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                      color: isDarkMode ? '#f8fafc' : '#0f172a',
+                      fontSize: '12px',
+                      borderRadius: '6px'
+                    }}
+                  />
+                  <Bar dataKey="students" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -243,45 +343,52 @@ export const Analytics: React.FC = () => {
               </p>
             </div>
             <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-              Upward Trend (+11%)
+              {performanceTrendData.length} Assignment{performanceTrendData.length === 1 ? '' : 's'} Tracked
             </span>
           </div>
 
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={performanceTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                <XAxis dataKey="assignment" stroke={textColor} fontSize={12} tickLine={false} />
-                <YAxis stroke={textColor} fontSize={12} domain={[60, 100]} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: isDarkMode ? '#172033' : '#ffffff',
-                    borderColor: isDarkMode ? '#334155' : '#e2e8f0',
-                    color: isDarkMode ? '#f8fafc' : '#0f172a',
-                    fontSize: '12px',
-                    borderRadius: '6px'
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                <Line 
-                  type="monotone" 
-                  dataKey="avgScore" 
-                  name="Class Average (%)" 
-                  stroke="#4f46e5" 
-                  strokeWidth={2.5} 
-                  dot={{ r: 4, fill: '#4f46e5' }} 
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="highest" 
-                  name="Top Score (%)" 
-                  stroke="#10b981" 
-                  strokeWidth={2} 
-                  strokeDasharray="4 4" 
-                  dot={{ r: 3, fill: '#10b981' }} 
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {performanceTrendData.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs">
+                <TrendingUp className="w-8 h-8 mb-2 opacity-40" />
+                <p>No assignments found for the selected course filter.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={performanceTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                  <XAxis dataKey="assignment" stroke={textColor} fontSize={12} tickLine={false} />
+                  <YAxis stroke={textColor} fontSize={12} domain={[0, 100]} tickLine={false} />
+                  <Tooltip 
+                    contentStyle={{
+                      backgroundColor: isDarkMode ? '#172033' : '#ffffff',
+                      borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                      color: isDarkMode ? '#f8fafc' : '#0f172a',
+                      fontSize: '12px',
+                      borderRadius: '6px'
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                  <Line 
+                    type="monotone" 
+                    dataKey="avgScore" 
+                    name="Class Average (%)" 
+                    stroke="#4f46e5" 
+                    strokeWidth={2.5} 
+                    dot={{ r: 4, fill: '#4f46e5' }} 
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="highest" 
+                    name="Top Score (%)" 
+                    stroke="#10b981" 
+                    strokeWidth={2} 
+                    strokeDasharray="4 4" 
+                    dot={{ r: 3, fill: '#10b981' }} 
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>
@@ -310,30 +417,38 @@ export const Analytics: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-academic-lightBorder dark:divide-academic-darkBorder">
-              {assignmentPerformanceList.map((item, idx) => (
-                <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
-                    {item.name}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300 font-mono">
-                    {item.course}
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-indigo-600 dark:text-indigo-400">
-                    {item.avgScore}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
-                    {item.submissionRate}
-                  </td>
-                  <td className="px-4 py-3 text-rose-600 dark:text-rose-400 font-medium">
-                    {item.lateRate}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      {item.evalCompletion}
-                    </span>
+              {assignmentPerformanceList.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                    No assignments found for the current course selection.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                assignmentPerformanceList.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
+                      {item.name}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 font-mono">
+                      {item.course}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-indigo-600 dark:text-indigo-400">
+                      {item.avgScore}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                      {item.submissionRate}
+                    </td>
+                    <td className="px-4 py-3 text-rose-600 dark:text-rose-400 font-medium">
+                      {item.lateRate}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                        {item.evalCompletion}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

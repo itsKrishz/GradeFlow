@@ -72,7 +72,7 @@ export const Copilot: React.FC = () => {
                 Pending Submissions Roster Audit
               </div>
               <div className="p-2 rounded-md bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors truncate">
-                Arjun Nair (42% Plagiarism Overlap)
+                Academic Similarity & Plagiarism Audit
               </div>
               <div className="p-2 rounded-md bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors truncate">
                 Assignment 3 Grade Distribution

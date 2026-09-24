@@ -21,7 +21,15 @@ export const StudentDashboard: React.FC = () => {
   // Find submissions by this student
   const studentSubmissions = submissions.filter(s => s.studentId === currentUser.id || s.regNo === currentUser.regNo);
 
-  const evaluatedSubmissions = studentSubmissions.filter(s => s.evaluationStatus === 'Evaluated');
+  const evaluatedSubmissions = studentSubmissions.filter(s => s.evaluationStatus === 'Evaluated' && s.evaluation && s.evaluation.maxScore > 0);
+
+  const avgGpa = evaluatedSubmissions.length > 0
+    ? evaluatedSubmissions.reduce((acc, s) => acc + (s.evaluation!.totalScore / s.evaluation!.maxScore) * 100, 0) / evaluatedSubmissions.length
+    : null;
+
+  const gpaGrade = avgGpa !== null
+    ? (avgGpa >= 90 ? 'A+' : avgGpa >= 80 ? 'A' : avgGpa >= 70 ? 'B' : avgGpa >= 60 ? 'C' : 'D')
+    : '—';
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -30,7 +38,7 @@ export const StudentDashboard: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
-              {currentUser.regNo || 'CSE-2024-042'}
+              {currentUser.regNo || currentUser.username?.toUpperCase() || 'STUDENT'}
             </span>
             <span className="text-xs text-slate-500">Department of Computer Science</span>
           </div>
@@ -47,7 +55,7 @@ export const StudentDashboard: React.FC = () => {
           <div>
             <span className="text-[10px] text-slate-400 font-semibold uppercase">GPA / Average</span>
             <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-              88.5% (A)
+              {avgGpa !== null ? `${avgGpa.toFixed(1)}% (${gpaGrade})` : '—'}
             </div>
           </div>
           <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>
@@ -82,7 +90,15 @@ export const StudentDashboard: React.FC = () => {
           </div>
 
           <div className="divide-y divide-academic-lightBorder dark:divide-academic-darkBorder">
-            {assignments.map((assignment) => {
+            {assignments.length === 0 ? (
+              <div className="p-8 text-center space-y-2">
+                <FileText className="w-8 h-8 text-slate-400 mx-auto" />
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  No upcoming assignments scheduled.
+                </p>
+              </div>
+            ) : (
+              assignments.map((assignment) => {
               const mySub = studentSubmissions.find(s => s.assignmentId === assignment.id);
               const isSubmitted = !!mySub;
 
@@ -146,7 +162,7 @@ export const StudentDashboard: React.FC = () => {
                   </div>
                 </div>
               );
-            })}
+            }))}
           </div>
         </div>
 

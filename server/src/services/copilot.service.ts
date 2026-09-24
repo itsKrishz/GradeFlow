@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { Role } from '@prisma/client';
 import prisma from '../lib/prisma';
 
 export interface CopilotToolExecution {
@@ -135,17 +136,28 @@ export async function queryCopilot(params: {
   // 0. INTENT: STUDENT INDIVIDUAL REPORT (Direct teacher freedom to inspect students)
   if (
     lower.includes('report of') ||
-    lower.includes('student report') ||
     lower.includes('report for') ||
+    lower.includes('report on') ||
+    lower.includes('get me report') ||
+    lower.includes('get report') ||
     lower.includes('show report') ||
     lower.includes('show me the report') ||
-    lower.includes('report of one student') ||
-    lower.includes('show a student report') ||
+    lower.includes('show me report') ||
+    lower.includes('student report') ||
     lower.includes('student performance') ||
     lower.includes('score of') ||
     lower.includes('grade of') ||
     lower.includes('how did ') ||
-    (lower.includes('report') && (lower.includes('student') || lower.includes('arjun') || lower.includes('jordan') || lower.includes('alex') || lower.includes('rahul') || lower.includes('sophia')))
+    lower.includes('how is ') ||
+    (lower.includes('report') && (
+      lower.includes('student') ||
+      lower.includes('arjun') ||
+      lower.includes('jordan') ||
+      lower.includes('alex') ||
+      lower.includes('rahul') ||
+      lower.includes('sophia') ||
+      lower.includes('bhadra')
+    ))
   ) {
     return handleStudentReportQuery(teacherId, lower, query);
   }
@@ -221,6 +233,25 @@ export async function queryCopilot(params: {
   return handleGeneralCopilotQuery(query, teacherId);
 }
 
+function extractTargetStudentName(query: string): string | null {
+  const clean = query.trim().replace(/[?!.,;:]/g, '');
+  const m1 = clean.match(/(?:(?:get\s+(?:me\s+)?|show\s+(?:me\s+)?)?report\s+(?:of|for|on)|score\s+of|grade\s+of|how\s+did|performance\s+of|status\s+of)\s+(?:student\s+)?([a-zA-Z0-9_.\s]+)/i);
+  if (m1 && m1[1]) {
+    const candidate = m1[1].trim();
+    if (!['one student', 'a student', 'the student', 'student', 'any student', 'someone', 'particular student'].includes(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  const m2 = clean.match(/([a-zA-Z0-9_]+)(?:'s|\s+)\s*report/i);
+  if (m2 && m2[1]) {
+    const candidate = m2[1].trim();
+    if (!['student', 'evaluation', 'assignment', 'similarity', 'integrity'].includes(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 /**
  * 0. Query: Individual Student Academic & Similarity Report
  */
@@ -274,51 +305,117 @@ async function handleStudentReportQuery(
     }
   }
 
-  // 1. Check if a specific student name or regNo is mentioned in the query
-  let matched: EnrichedSub | undefined = allSubmissions.find((item) => {
-    const studentName = item.student.name.toLowerCase();
-    const parts = studentName.split(' ');
-    return (
-      lower.includes(studentName) ||
-      parts.some((part: string) => part.length > 2 && lower.includes(part)) ||
-      lower.includes(item.student.username.toLowerCase()) ||
-      lower.includes(item.student.email.toLowerCase())
-    );
-  });
+  const requestedStudent = extractTargetStudentName(rawQuery);
 
-  // If no submission matched by name, check enrolled students
-  if (!matched) {
-    for (const c of courses) {
-      for (const e of c.enrollments) {
-        const studentName = e.student.name.toLowerCase();
-        const parts = studentName.split(' ');
-        if (
-          lower.includes(studentName) ||
-          parts.some((part: string) => part.length > 2 && lower.includes(part)) ||
-          lower.includes(e.student.email.toLowerCase())
-        ) {
-          return {
-            text: `Student **${e.student.name}** (${e.student.email}) is enrolled in **${c.name} (${c.code})**, but has not submitted any assignments yet.`,
-            toolExecution: {
-              actionName: 'Searching student academic records...',
-              steps: [
-                { label: `Verified enrollment in ${c.code}`, done: true },
-                { label: 'Checking assignment submissions (0 found)', done: true },
-              ],
-            },
-            provider: 'copilot-engine',
-          };
+  let matched: EnrichedSub | undefined;
+
+  if (requestedStudent) {
+    const reqClean = requestedStudent.toLowerCase();
+    // 1. Check submissions matching target
+    matched = allSubmissions.find((item) => {
+      const sName = item.student.name.toLowerCase();
+      const sUsername = (item.student.username || '').toLowerCase();
+      const sEmail = (item.student.email || '').toLowerCase();
+      return (
+        sName.includes(reqClean) ||
+        reqClean.includes(sName) ||
+        sName.split(' ').some((p: string) => p.length > 2 && reqClean.includes(p)) ||
+        sUsername === reqClean ||
+        sEmail.includes(reqClean)
+      );
+    });
+
+    // 2. If no submission found, check enrolled students
+    if (!matched) {
+      for (const c of courses) {
+        for (const e of c.enrollments) {
+          const sName = e.student.name.toLowerCase();
+          const sUsername = (e.student.username || '').toLowerCase();
+          const sEmail = (e.student.email || '').toLowerCase();
+          if (
+            sName.includes(reqClean) ||
+            reqClean.includes(sName) ||
+            sName.split(' ').some((p: string) => p.length > 2 && reqClean.includes(p)) ||
+            sUsername === reqClean ||
+            sEmail.includes(reqClean)
+          ) {
+            return {
+              text: `Student **${e.student.name}** (${e.student.email}) is enrolled in **${c.name} (${c.code})**, but has not submitted any assignments yet.`,
+              toolExecution: {
+                actionName: `Searching records for ${e.student.name}...`,
+                steps: [
+                  { label: `Verified course enrollment in ${c.code}`, done: true },
+                  { label: 'Checking assignment submissions (0 found)', done: true },
+                ],
+              },
+              provider: 'copilot-engine',
+            };
+          }
         }
       }
     }
-  }
 
-  // 2. If no specific student mentioned (e.g. "show the report of one student" / "student report"):
-  // Pick the most illustrative evaluated student (preferring one with similarity flags, or highest evaluated)
-  if (!matched && allSubmissions.length > 0) {
-    matched = allSubmissions.find((s) => s.submission.evaluation && s.submission.similarityReport?.flagged) ||
-              allSubmissions.find((s) => s.submission.evaluation) ||
-              allSubmissions[0];
+    // 3. If still not matched, check general database user directory
+    if (!matched) {
+      const allDbStudents = await prisma.user.findMany({
+        where: { role: Role.STUDENT },
+      });
+      const userMatch = allDbStudents.find((u) => {
+        const uName = u.name.toLowerCase();
+        const uUser = (u.username || '').toLowerCase();
+        const uEmail = (u.email || '').toLowerCase();
+        return (
+          uName.includes(reqClean) ||
+          reqClean.includes(uName) ||
+          uName.split(' ').some((p) => p.length > 2 && reqClean.includes(p)) ||
+          uUser === reqClean ||
+          uEmail.includes(reqClean)
+        );
+      });
+
+      if (userMatch) {
+        return {
+          text: `Student **${userMatch.name}** (@${userMatch.username || userMatch.email}) is registered in the department directory, but is not currently enrolled in this course.`,
+          toolExecution: {
+            actionName: `Searching directory for ${userMatch.name}...`,
+            steps: [
+              { label: `Located academic record: ${userMatch.name}`, done: true },
+              { label: 'Checking active course enrollments (None found)', done: true },
+            ],
+          },
+          provider: 'copilot-engine',
+        };
+      }
+    }
+
+    // 4. If requested student does NOT exist anywhere, inform the teacher cleanly
+    if (!matched) {
+      const enrolledNames = Array.from(
+        new Set(courses.flatMap((c) => c.enrollments.map((e) => e.student.name)))
+      );
+      return {
+        text: `No student found matching "**${requestedStudent}**" in your courses. Enrolled students in your courses include: ${
+          enrolledNames.length > 0 ? enrolledNames.join(', ') : 'Rahul Kumar, Arjun Nair, Sophia Chen, Jordan Lee'
+        }. You can also provision and enroll new students in the Admin User Management portal.`,
+        toolExecution: {
+          actionName: `Searching student directory for "${requestedStudent}"...`,
+          steps: [
+            { label: `Scanned ${courses.length} course rosters`, done: true },
+            { label: `No student found matching "${requestedStudent}"`, done: false },
+          ],
+        },
+        provider: 'copilot-engine',
+      };
+    }
+  } else {
+    // No specific student was named (e.g. "show report of one student" / "show student report")
+    // Pick an illustrative evaluated student
+    if (allSubmissions.length > 0) {
+      matched =
+        allSubmissions.find((s) => s.submission.evaluation && s.submission.similarityReport?.flagged) ||
+        allSubmissions.find((s) => s.submission.evaluation) ||
+        allSubmissions[0];
+    }
   }
 
   if (!matched) {

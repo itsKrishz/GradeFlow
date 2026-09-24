@@ -26,94 +26,56 @@ export const BatchEvaluation: React.FC = () => {
 
   const currentAssignment = assignments.find(a => a.id === assignmentId) || assignments[0];
 
+  const assignmentSubmissions = currentAssignment 
+    ? submissions.filter(s => s.assignmentId === currentAssignment.id)
+    : [];
+
   // Local state for batch rows
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [filterTab, setFilterTab] = useState<'all' | 'review' | 'approved' | 'flagged'>('all');
   const [searchFilter, setSearchFilter] = useState('');
 
-  // Generate realistic batch submissions rows
-  const [batchRows, setBatchRows] = useState([
-    {
-      id: 'sub-batch-1',
-      studentName: 'Rahul Kumar',
-      regNo: '23BCS001',
-      similarity: 4,
-      aiScore: '18 / 20',
-      numericScore: 18,
-      status: 'Review' as 'Review' | 'Approved' | 'Flagged',
-      reasoning: 'Correct 1NF & 2NF decomposition. Minimal loss of transitive justification in 3NF.'
-    },
-    {
-      id: 'sub-batch-2',
-      studentName: 'Anjali Menon',
-      regNo: '23BCS002',
-      similarity: 7,
-      aiScore: '16 / 20',
-      numericScore: 16,
-      status: 'Review' as 'Review' | 'Approved' | 'Flagged',
-      reasoning: 'Complete DDL specifications with foreign key constraints. Missing clustered index benchmark.'
-    },
-    {
-      id: 'sub-batch-3',
-      studentName: 'Arjun Nair',
-      regNo: '23BCS003',
-      similarity: 48,
-      aiScore: '—',
-      numericScore: 0,
-      status: 'Flagged' as 'Review' | 'Approved' | 'Flagged',
-      reasoning: 'High similarity (48%) with Fall 2025 student submission archive. Manual instructor audit required.'
-    },
-    {
-      id: 'sub-batch-4',
-      studentName: 'Priya Sharma',
-      regNo: '23BCS004',
-      similarity: 3,
-      aiScore: '19 / 20',
-      numericScore: 19,
-      status: 'Approved' as 'Review' | 'Approved' | 'Flagged',
-      reasoning: 'Exemplary submission with comprehensive BCNF lossless join derivation.'
-    },
-    {
-      id: 'sub-batch-5',
-      studentName: 'Dev Patel',
-      regNo: '23BCS005',
-      similarity: 6,
-      aiScore: '17 / 20',
-      numericScore: 17,
-      status: 'Review' as 'Review' | 'Approved' | 'Flagged',
-      reasoning: 'Valid functional dependencies identified. Clean ER diagram specifications.'
-    },
-    {
-      id: 'sub-batch-6',
-      studentName: 'Kavya Pillai',
-      regNo: '23BCS006',
-      similarity: 9,
-      aiScore: '18 / 20',
-      numericScore: 18,
-      status: 'Review' as 'Review' | 'Approved' | 'Flagged',
-      reasoning: 'Strong query indexing with B-Trees. Clean normalized relations.'
-    },
-    {
-      id: 'sub-batch-7',
-      studentName: 'Rohan Mehta',
-      regNo: '23BCS007',
-      similarity: 42,
-      aiScore: '—',
-      numericScore: 0,
-      status: 'Flagged' as 'Review' | 'Approved' | 'Flagged',
-      reasoning: 'Detected 42% textual overlap in BTree insert code with public GitHub repository.'
-    },
-    {
-      id: 'sub-batch-8',
-      studentName: 'Ananya Iyer',
-      regNo: '23BCS008',
-      similarity: 2,
-      aiScore: '20 / 20',
-      numericScore: 20,
-      status: 'Approved' as 'Review' | 'Approved' | 'Flagged',
-      reasoning: 'Flawless schema implementation, comprehensive unit tests, and query benchmarks.'
-    }
-  ]);
+  // Generate batch submissions rows from actual submissions
+  const [batchRows, setBatchRows] = useState(() => {
+    return assignmentSubmissions.map(s => {
+      const isFlagged = s.evaluationStatus === 'Flagged' || (s.similarityScore || 0) >= 30;
+      const isApproved = s.evaluationStatus === 'Evaluated';
+      const aiScoreNum = s.aiSuggestedScore || (s.evaluation ? s.evaluation.totalScore : Math.round((currentAssignment?.totalMarks || 100) * 0.85));
+      return {
+        id: s.id,
+        studentName: s.studentName,
+        regNo: s.regNo,
+        similarity: s.similarityScore || 0,
+        aiScore: isFlagged ? '—' : `${aiScoreNum} / ${currentAssignment?.totalMarks || 100}`,
+        numericScore: isFlagged ? 0 : aiScoreNum,
+        status: (isFlagged ? 'Flagged' : isApproved ? 'Approved' : 'Review') as 'Review' | 'Approved' | 'Flagged',
+        reasoning: isFlagged 
+          ? `High similarity (${s.similarityScore}%) flagged. Manual instructor review required.`
+          : 'Submission satisfies core rubric criteria with structured deliverables.'
+      };
+    });
+  });
+
+  // Keep batchRows in sync with submissions
+  React.useEffect(() => {
+    setBatchRows(assignmentSubmissions.map(s => {
+      const isFlagged = s.evaluationStatus === 'Flagged' || (s.similarityScore || 0) >= 30;
+      const isApproved = s.evaluationStatus === 'Evaluated';
+      const aiScoreNum = s.aiSuggestedScore || (s.evaluation ? s.evaluation.totalScore : Math.round((currentAssignment?.totalMarks || 100) * 0.85));
+      return {
+        id: s.id,
+        studentName: s.studentName,
+        regNo: s.regNo,
+        similarity: s.similarityScore || 0,
+        aiScore: isFlagged ? '—' : `${aiScoreNum} / ${currentAssignment?.totalMarks || 100}`,
+        numericScore: isFlagged ? 0 : aiScoreNum,
+        status: (isFlagged ? 'Flagged' : isApproved ? 'Approved' : 'Review') as 'Review' | 'Approved' | 'Flagged',
+        reasoning: isFlagged 
+          ? `High similarity (${s.similarityScore}%) flagged. Manual instructor review required.`
+          : 'Submission satisfies core rubric criteria with structured deliverables.'
+      };
+    }));
+  }, [submissions, currentAssignment?.id]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -186,11 +148,10 @@ export const BatchEvaluation: React.FC = () => {
         {/* Action Header Stats */}
         <div className="flex items-center gap-3">
           <div className="text-right text-xs">
-            <span className="text-slate-500">Total Deliverables: </span>
-            <span className="font-bold text-slate-900 dark:text-slate-100 font-mono">80 Submissions</span>
+            <span className="font-bold text-slate-900 dark:text-slate-100 font-mono">{assignmentSubmissions.length} Submissions</span>
           </div>
           <button
-            onClick={() => navigate(`/teacher/evaluation/${currentAssignment?.id || 'assign-1'}`)}
+            onClick={() => navigate(currentAssignment ? `/teacher/evaluation/${currentAssignment.id}` : '/teacher/assignments')}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors shadow-sm"
           >
             <span>Open 3-Column Workspace</span>
@@ -279,8 +240,15 @@ export const BatchEvaluation: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-academic-lightBorder dark:divide-academic-darkBorder">
-              {filteredRows.map((row) => {
-                const isSelected = selectedIds.includes(row.id);
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                    No student submissions found for this assignment.
+                  </td>
+                </tr>
+              ) : (
+                filteredRows.map((row) => {
+                  const isSelected = selectedIds.includes(row.id);
                 return (
                   <tr 
                     key={row.id}
@@ -343,7 +311,7 @@ export const BatchEvaluation: React.FC = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => navigate(`/teacher/evaluation/${currentAssignment?.id || 'assign-1'}`)}
+                          onClick={() => navigate(currentAssignment ? `/teacher/evaluation/${currentAssignment.id}` : '/teacher/assignments')}
                           className="p-1 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 rounded transition-colors"
                           title="Edit Rubric in Workspace"
                         >
@@ -362,7 +330,7 @@ export const BatchEvaluation: React.FC = () => {
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>

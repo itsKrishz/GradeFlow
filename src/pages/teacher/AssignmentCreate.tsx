@@ -110,6 +110,10 @@ export const AssignmentCreate: React.FC = () => {
     }
 
     const selectedCourse = courses.find(c => c.id === courseId) || courses[0];
+    if (!selectedCourse) {
+      showToast('Please create or select a course first', 'error');
+      return;
+    }
 
     createAssignment({
       courseId: selectedCourse.id,
@@ -128,6 +132,23 @@ export const AssignmentCreate: React.FC = () => {
 
     navigate(`/teacher/courses/${selectedCourse.id}?tab=assignments`);
   };
+
+  if (courses.length === 0) {
+    return (
+      <div className="p-12 text-center max-w-md mx-auto space-y-4">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">No Courses Available</h3>
+        <p className="text-xs text-slate-500">
+          You must create at least one course before creating an assignment.
+        </p>
+        <button
+          onClick={() => navigate('/teacher/courses?action=create')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold shadow-sm transition-colors"
+        >
+          Create Course First
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">

@@ -17,7 +17,8 @@ import {
   AlertTriangle,
   Check,
   Inbox,
-  PanelLeft
+  PanelLeft,
+  LogOut
 } from 'lucide-react';
 import { Role } from '../../types';
 
@@ -35,7 +36,8 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onToggleSidebar }) => {
     unreadNotificationsCount, 
     markNotificationAsRead, 
     markAllNotificationsAsRead, 
-    openCopilot 
+    openCopilot,
+    logout
   } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
@@ -339,7 +341,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onToggleSidebar }) => {
                 }`}
               >
                 <UserCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span>Teacher (Prof. Sarah Jenkins)</span>
+                <span>Teacher (Faculty Evaluator)</span>
               </button>
 
               <button
@@ -349,7 +351,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onToggleSidebar }) => {
                 }`}
               >
                 <GraduationCap className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span>Student (Rahul Kumar)</span>
+                <span>Student (Bhadra K.)</span>
               </button>
 
               <button
@@ -359,7 +361,21 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ onToggleSidebar }) => {
                 }`}
               >
                 <ShieldCheck className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <span>Admin (Dr. Arvind Mehta)</span>
+                <span>Admin (Campus Administrator)</span>
+              </button>
+
+              <div className="border-t border-academic-lightBorder dark:border-academic-darkBorder my-1" />
+
+              <button
+                onClick={() => {
+                  setShowRoleMenu(false);
+                  logout();
+                  navigate('/login');
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors font-medium"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
               </button>
             </div>
           )}

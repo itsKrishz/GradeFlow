@@ -34,11 +34,11 @@ interface IntegrityAuditInfo {
 }
 
 export const Reports: React.FC = () => {
-  const { courses, assignments, enrolledStudents, showToast } = useApp();
+  const { courses, assignments, enrolledStudents, submissions, showToast } = useApp();
 
   const [reportType, setReportType] = useState<'gradesheet' | 'summary' | 'performance'>('gradesheet');
-  const [selectedCourseId, setSelectedCourseId] = useState(courses[0]?.id || 'course-1');
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState(assignments[0]?.id || 'assign-1');
+  const [selectedCourseId, setSelectedCourseId] = useState(courses[0]?.id || '');
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState(assignments[0]?.id || '');
   const [selectedSection, setSelectedSection] = useState('A');
   const [isExporting, setIsExporting] = useState<string | null>(null);
 
@@ -51,42 +51,114 @@ export const Reports: React.FC = () => {
   const selectedCourse = courses.find(c => c.id === selectedCourseId) || courses[0];
   const selectedAssignment = assignments.find(a => a.id === selectedAssignmentId) || assignments[0];
 
-  // Base student report rows
-  const initialData = [
-    { id: enrolledStudents[0]?.id || 'stu-1', name: enrolledStudents[0]?.name || 'Alex Chen', regNo: enrolledStudents[0]?.regNo || '21BCE1042', a1: 34, a2: 43, defaultStatus: 'Clean' as const, simScore: 0 },
-    { id: enrolledStudents[1]?.id || 'stu-2', name: enrolledStudents[1]?.name || 'Priya Sharma', regNo: enrolledStudents[1]?.regNo || '21BCE1089', a1: 31, a2: 39, defaultStatus: 'Clean' as const, simScore: 4 },
-    { id: enrolledStudents[2]?.id || 'stu-3', name: enrolledStudents[2]?.name || 'Rohan Mehta', regNo: enrolledStudents[2]?.regNo || '21BCE1156', a1: 27, a2: 35, defaultStatus: 'Flagged' as const, simScore: 42 },
-    { id: enrolledStudents[3]?.id || 'stu-4', name: enrolledStudents[3]?.name || 'Ananya Iyer', regNo: enrolledStudents[3]?.regNo || '21BCE1204', a1: 38, a2: 48, defaultStatus: 'Clean' as const, simScore: 2 },
-    { id: enrolledStudents[4]?.id || 'stu-5', name: enrolledStudents[4]?.name || 'Dev Patel', regNo: enrolledStudents[4]?.regNo || '21BCE1311', a1: 29, a2: 36, defaultStatus: 'Clean' as const, simScore: 6 }
-  ];
+  // Assignments belonging to selected course
+  const courseAssignments = assignments.filter(a => 
+    selectedCourse ? (a.courseId === selectedCourse.id || a.courseCode === selectedCourse.code) : true
+  );
 
-  const reportRows = initialData.map((d) => {
-    const total = d.a1 + d.a2;
-    const max = 90;
-    const pct = ((total / max) * 100).toFixed(1);
-    let grade = 'B';
-    if (total >= 80) grade = 'A+';
-    else if (total >= 72) grade = 'A';
-    else if (total >= 65) grade = 'B+';
-    else if (total >= 55) grade = 'B';
-    else grade = 'C';
+  // Dynamically derive student report rows from real enrolled students & submissions
+  const relevantSubmissions = submissions.filter(s => {
+    if (!selectedCourse) return true;
+    const a = assignments.find(asg => asg.id === s.assignmentId);
+    return a ? a.courseId === selectedCourse.id : true;
+  });
 
-    const currentStatus = integrityOverrides[d.id] || d.defaultStatus;
+  const studentMap = new Map<string, { id: string; name: string; regNo: string; submissions: typeof submissions }>();
+
+  // Include enrolled students
+  enrolledStudents
+    .filter(s => !selectedCourse || s.courseId === selectedCourse.id)
+    .forEach(s => {
+      studentMap.set(s.id, { id: s.id, name: s.name, regNo: s.regNo, submissions: [] });
+    });
+
+  // Include submitting students
+  relevantSubmissions.forEach(sub => {
+    const existing = studentMap.get(sub.studentId);
+    if (existing) {
+      existing.submissions.push(sub);
+    } else {
+      studentMap.set(sub.studentId, {
+        id: sub.studentId,
+        name: sub.studentName,
+        regNo: sub.regNo,
+        submissions: [sub]
+      });
+    }
+  });
+
+  const reportRows = Array.from(studentMap.values()).map((student) => {
+    const studentSubs = student.submissions;
+    let total = 0;
+    let max = 0;
+    let worstSimScore = 0;
+    let isFlagged = false;
+
+    studentSubs.forEach(sub => {
+      if (sub.evaluation) {
+        total += sub.evaluation.totalScore;
+        max += sub.evaluation.maxScore;
+      }
+      if (sub.similarityScore > worstSimScore) {
+        worstSimScore = sub.similarityScore;
+      }
+      if (sub.similarityScore >= (sub.similarityReport?.threshold || 20)) {
+        isFlagged = true;
+      }
+    });
+
+    const displayMax = max > 0 ? max : 100;
+    const pctVal = max > 0 ? (total / max) * 100 : 0;
+    const pct = `${pctVal.toFixed(1)}%`;
+    let grade = 'N/A';
+    if (max > 0) {
+      if (pctVal >= 90) grade = 'A+';
+      else if (pctVal >= 80) grade = 'A';
+      else if (pctVal >= 70) grade = 'B';
+      else if (pctVal >= 60) grade = 'C';
+      else grade = 'D';
+    }
+
+    const defaultStatus = isFlagged ? ('Flagged' as const) : ('Clean' as const);
+    const currentStatus = integrityOverrides[student.id] || defaultStatus;
+
+    // Build assignment scores map
+    const assignmentScores: Record<string, string | number> = {};
+    courseAssignments.forEach(asg => {
+      const match = studentSubs.find(s => s.assignmentId === asg.id);
+      if (match?.evaluation) {
+        assignmentScores[asg.id] = match.evaluation.totalScore;
+      } else if (match) {
+        assignmentScores[asg.id] = 'Submitted';
+      } else {
+        assignmentScores[asg.id] = '—';
+      }
+    });
 
     return {
-      ...d,
-      total,
-      max,
-      percentage: `${pct}%`,
-      grade,
+      id: student.id,
+      name: student.name,
+      regNo: student.regNo,
+      assignmentScores,
+      total: max > 0 ? total : '—',
+      max: displayMax,
+      percentage: max > 0 ? pct : '—',
+      grade: max > 0 ? grade : '—',
       status: currentStatus,
-      similarityScore: currentStatus === 'Clean' && d.defaultStatus === 'Flagged' ? 0 : d.simScore
+      similarityScore: currentStatus === 'Clean' ? 0 : worstSimScore,
+      firstSubmission: studentSubs[0]
     };
   });
 
   // REAL CSV EXPORT IMPLEMENTATION
   const handleExportCSV = () => {
+    if (reportRows.length === 0) {
+      showToast('No student data available to export.', 'info');
+      return;
+    }
     setIsExporting('csv');
+
+    const assignmentHeaders = courseAssignments.map(a => `"${a.title.replace(/"/g, '""')} (${a.totalMarks})"`);
 
     const headers = [
       'Student Name',
@@ -94,29 +166,33 @@ export const Reports: React.FC = () => {
       'Course Code',
       'Course Name',
       'Section',
-      'Assignment 1 (40)',
-      'Assignment 2 (50)',
-      'Total Score (90)',
+      ...(assignmentHeaders.length > 0 ? assignmentHeaders : ['Assignments']),
+      'Total Score',
       'Percentage',
       'Final Grade',
       'Integrity Status',
       'Similarity Score (%)'
     ];
 
-    const rows = reportRows.map(row => [
-      `"${row.name.replace(/"/g, '""')}"`,
-      `"${row.regNo}"`,
-      `"${selectedCourse ? selectedCourse.code : 'CS301'}"`,
-      `"${selectedCourse ? selectedCourse.name.replace(/"/g, '""') : 'Database Systems'}"`,
-      `"Section ${selectedSection}"`,
-      row.a1,
-      row.a2,
-      `"${row.total} / ${row.max}"`,
-      `"${row.percentage}"`,
-      `"${row.grade}"`,
-      `"${row.status}"`,
-      `"${row.similarityScore}%"`
-    ]);
+    const rows = reportRows.map(row => {
+      const asgCols = courseAssignments.length > 0 
+        ? courseAssignments.map(a => `"${row.assignmentScores[a.id] ?? '—'}"`)
+        : ['"—"'];
+
+      return [
+        `"${row.name.replace(/"/g, '""')}"`,
+        `"${row.regNo}"`,
+        `"${selectedCourse ? selectedCourse.code : 'COURSE'}"`,
+        `"${selectedCourse ? selectedCourse.name.replace(/"/g, '""') : 'Course'}"`,
+        `"Section ${selectedSection}"`,
+        ...asgCols,
+        `"${row.total} / ${row.max}"`,
+        `"${row.percentage}"`,
+        `"${row.grade}"`,
+        `"${row.status}"`,
+        `"${row.similarityScore}%"`
+      ];
+    });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -139,33 +215,33 @@ export const Reports: React.FC = () => {
 
   const handleOpenIntegrityAudit = (row: typeof reportRows[0]) => {
     const isFlagged = row.status === 'Flagged';
+    const sub = row.firstSubmission;
 
     const auditData: IntegrityAuditInfo = {
       studentId: row.id,
       studentName: row.name,
       regNo: row.regNo,
-      courseCode: selectedCourse ? selectedCourse.code : 'CS301',
-      courseName: selectedCourse ? selectedCourse.name : 'Database Systems',
-      assignmentTitle: selectedAssignment ? selectedAssignment.title : 'Assignment 2 - B-Tree Indexing',
+      courseCode: selectedCourse ? selectedCourse.code : '—',
+      courseName: selectedCourse ? selectedCourse.name : '—',
+      assignmentTitle: selectedAssignment ? selectedAssignment.title : (sub ? 'Assignment Deliverable' : '—'),
       status: row.status,
       similarityScore: row.similarityScore,
-      scanDate: '2026-09-08 14:23 UTC',
-      matches: isFlagged ? [
+      scanDate: sub?.submittedAt || new Date().toISOString().slice(0, 10),
+      matches: sub?.similarityReport?.matchedSections?.map(m => ({
+        sourceTitle: m.matchedSource || 'Institutional Peer Match',
+        sourceType: 'Peer Submission',
+        similarity: m.similarityPercentage || 25,
+        studentSnippet: m.sectionTitle || 'Referenced submission section',
+        matchedSnippet: m.matchedSnippet || 'Matching archive content'
+      })) || (isFlagged ? [
         {
-          sourceTitle: 'Institutional Archive (CS301 Fall 2025 - Submission #884)',
-          sourceType: 'Institutional Peer Corpus',
-          similarity: 28,
-          studentSnippet: 'void BTreeNode::insertNonFull(int k) {\n    int i = n - 1;\n    if (leaf == true) {\n        while (i >= 0 && keys[i] > k) {\n            keys[i + 1] = keys[i];\n            i--;\n        }\n        keys[i + 1] = k;\n        n = n + 1;\n    }\n}',
-          matchedSnippet: 'void BTreeNode::insertNonFull(int k) {\n    int i = n - 1;\n    if (leaf == true) {\n        while (i >= 0 && keys[i] > k) {\n            keys[i + 1] = keys[i];\n            i--;\n        }\n        keys[i + 1] = k;\n        n = n + 1;\n    }\n}'
-        },
-        {
-          sourceTitle: 'GitHub: cpp-algorithms/btree_index_engine.cpp',
-          sourceType: 'Public Open Source Repository',
-          similarity: 14,
-          studentSnippet: 'void BTreeNode::splitChild(int i, BTreeNode *y) {\n    BTreeNode *z = new BTreeNode(y->t, y->leaf);\n    z->n = t - 1;\n    for (int j = 0; j < t - 1; j++)\n        z->keys[j] = y->keys[j + t];\n}',
-          matchedSnippet: 'void BTreeNode::splitChild(int i, BTreeNode *y) {\n    BTreeNode *z = new BTreeNode(y->t, y->leaf);\n    z->n = t - 1;\n    for (int j = 0; j < t - 1; j++)\n        z->keys[j] = y->keys[j + t];\n}'
+          sourceTitle: 'Institutional Peer Corpus (Cross-Student Similarity)',
+          sourceType: 'Peer Submission Archive',
+          similarity: row.similarityScore,
+          studentSnippet: 'Matched code or document fragment detected across submission archive.',
+          matchedSnippet: 'Direct cross-document correlation with peer submission.'
         }
-      ] : undefined
+      ] : undefined)
     };
 
     setActiveAudit(auditData);
@@ -344,8 +420,14 @@ export const Reports: React.FC = () => {
               <tr>
                 <th className="px-4 py-3">Student Name</th>
                 <th className="px-4 py-3">Reg. Number</th>
-                <th className="px-4 py-3">Assignment 1 (40)</th>
-                <th className="px-4 py-3">Assignment 2 (50)</th>
+                {courseAssignments.map(asg => (
+                  <th key={asg.id} className="px-4 py-3">
+                    {asg.title} ({asg.totalMarks})
+                  </th>
+                ))}
+                {courseAssignments.length === 0 && (
+                  <th className="px-4 py-3">Assignments</th>
+                )}
                 <th className="px-4 py-3">Total Score</th>
                 <th className="px-4 py-3">Percentage</th>
                 <th className="px-4 py-3">Final Grade</th>
@@ -353,7 +435,14 @@ export const Reports: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-academic-lightBorder dark:divide-academic-darkBorder">
-              {reportRows.map((stu) => (
+              {reportRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6 + Math.max(1, courseAssignments.length)} className="px-4 py-8 text-center text-slate-500">
+                    No student submissions or enrolled students found for this course yet.
+                  </td>
+                </tr>
+              ) : (
+                reportRows.map((stu) => (
                 <tr key={stu.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
                     {stu.name}
@@ -361,12 +450,14 @@ export const Reports: React.FC = () => {
                   <td className="px-4 py-3 font-mono text-slate-500">
                     {stu.regNo}
                   </td>
-                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
-                    {stu.a1}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
-                    {stu.a2}
-                  </td>
+                  {courseAssignments.map(asg => (
+                    <td key={asg.id} className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                      {stu.assignmentScores[asg.id] ?? '—'}
+                    </td>
+                  ))}
+                  {courseAssignments.length === 0 && (
+                    <td className="px-4 py-3 text-slate-400">—</td>
+                  )}
                   <td className="px-4 py-3 font-bold text-slate-900 dark:text-slate-100">
                     {stu.total} / {stu.max}
                   </td>
@@ -398,7 +489,7 @@ export const Reports: React.FC = () => {
                     </button>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>
@@ -485,7 +576,7 @@ export const Reports: React.FC = () => {
               <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800">
                 <div className="text-[10px] text-slate-400 font-semibold uppercase">AI Probability</div>
                 <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-                  {activeAudit.status === 'Flagged' ? '18.4%' : '< 1.5%'}
+                  {activeAudit.status === 'Flagged' ? `${activeAudit.similarityScore}%` : '0%'}
                 </div>
               </div>
               <div className="p-2.5 bg-slate-50 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800">

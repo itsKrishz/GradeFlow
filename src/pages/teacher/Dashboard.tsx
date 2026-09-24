@@ -52,7 +52,13 @@ export const TeacherDashboard: React.FC = () => {
           </button>
 
           <button
-            onClick={() => navigate(`/teacher/evaluation/${assignments[0]?.id || 'assign-1'}`)}
+            onClick={() => {
+              if (assignments.length > 0) {
+                navigate(`/teacher/evaluation/${assignments[0].id}`);
+              } else {
+                navigate('/teacher/assignments');
+              }
+            }}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors shadow-sm"
           >
             <FileCheck2 className="w-3.5 h-3.5" />
@@ -161,59 +167,73 @@ export const TeacherDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-academic-lightBorder dark:divide-academic-darkBorder">
-              {assignments.map((assignment) => (
-                <tr 
-                  key={assignment.id}
-                  className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-                >
-                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
-                    <div className="truncate max-w-xs">{assignment.title}</div>
-                    <div className="text-[11px] font-normal text-slate-500">
-                      Total Marks: {assignment.totalMarks} • {assignment.rubric.length} Criteria
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300">
-                      {assignment.courseCode}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                    {assignment.dueDate}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-slate-900 dark:text-slate-100">
-                        {assignment.submittedCount}/{assignment.totalStudents}
-                      </span>
-                      <span className="text-[11px] text-amber-600 dark:text-amber-400">
-                        ({assignment.pendingCount} pending)
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant="blue" size="sm">
-                      {assignment.status}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => navigate(`/teacher/evaluation/${assignment.id}`)}
-                        className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
-                      >
-                        Evaluate
-                      </button>
-                      <button
-                        onClick={() => navigate(`/teacher/assignments/${assignment.id}`)}
-                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                        title="View Details"
-                      >
-                        <ArrowUpRight className="w-4 h-4" />
-                      </button>
-                    </div>
+              {assignments.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
+                    <p className="text-xs font-medium">No assignments created yet.</p>
+                    <button
+                      onClick={() => navigate('/teacher/assignments/create')}
+                      className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                    >
+                      + Create your first assignment
+                    </button>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                assignments.map((assignment) => (
+                  <tr 
+                    key={assignment.id}
+                    className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                  >
+                    <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
+                      <div className="truncate max-w-xs">{assignment.title}</div>
+                      <div className="text-[11px] font-normal text-slate-500">
+                        Total Marks: {assignment.totalMarks} • {assignment.rubric.length} Criteria
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-xs px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-700 dark:text-slate-300">
+                        {assignment.courseCode}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      {assignment.dueDate}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-slate-900 dark:text-slate-100">
+                          {assignment.submittedCount}/{assignment.totalStudents}
+                        </span>
+                        <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                          ({assignment.pendingCount} pending)
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="blue" size="sm">
+                        {assignment.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => navigate(`/teacher/evaluation/${assignment.id}`)}
+                          className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
+                        >
+                          Evaluate
+                        </button>
+                        <button
+                          onClick={() => navigate(`/teacher/assignments/${assignment.id}`)}
+                          className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                          title="View Details"
+                        >
+                          <ArrowUpRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

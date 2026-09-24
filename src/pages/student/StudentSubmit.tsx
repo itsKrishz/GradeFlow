@@ -20,15 +20,28 @@ import {
   Check
 } from 'lucide-react';
 import { Badge } from '../../components/common/Badge';
+import { savePdfFile } from '../../utils/pdfStorage';
+import { SubmissionPipelineResult } from '../../types';
 
 export const StudentSubmit: React.FC = () => {
   const { assignmentId } = useParams<{ assignmentId: string }>();
   const navigate = useNavigate();
-  const { assignments, submitAssignment, currentUser } = useApp();
+  const { assignments, submitAssignment, submissions, currentUser } = useApp();
 
   const assignment = assignments.find(a => a.id === assignmentId) || assignments[0];
 
-  const [selectedFile, setSelectedFile] = useState<{ name: string; size: string } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{
+    name: string;
+    size: string;
+    fileBytes?: number;
+    fileHash?: string;
+    textContent?: string;
+    wordCount?: number;
+    fileBlob?: File;
+    fileUrl?: string;
+  } | null>(null);
+  const [pipelineSimilarity, setPipelineSimilarity] = useState<number | null>(null);
+  const [pipelineResult, setPipelineResult] = useState<SubmissionPipelineResult | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
   const [submissionTimestamp, setSubmissionTimestamp] = useState('');
@@ -40,21 +53,79 @@ export const StudentSubmit: React.FC = () => {
   const [simulateWorkerFailure, setSimulateWorkerFailure] = useState(false);
   const [pipelineError, setPipelineError] = useState('');
 
+  const processFile = async (file: File) => {
+    const sizeFormatted = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+    let fileHash = '';
+    let textContent = '';
+
+    try {
+      const buffer = await file.arrayBuffer();
+      // Compute cryptographic SHA-256 hash of file content
+      const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
+      fileHash = Array.from(new Uint8Array(hashBuf))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      if (file.type.includes('text') || file.name.endsWith('.sql') || file.name.endsWith('.py') || file.name.endsWith('.txt')) {
+        textContent = await file.text();
+      } else {
+        const raw = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(buffer));
+        const matches = raw.match(/\(([^)]{3,})\)\s*(?:Tj|'|")/g) || [];
+        if (matches.length > 5) {
+          textContent = matches.map(m => m.replace(/[()]/g, '').trim()).join(' ');
+        }
+        if (!textContent || textContent.length < 50) {
+          const ascii = raw.replace(/[^\x20-\x7E\n]/g, ' ');
+          textContent = ascii.split(/\s+/).filter(w => w.length > 3).slice(0, 400).join(' ');
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading file:', e);
+    }
+
+    // Convert to Data URL for instant guaranteed rendering across browser frames
+    let dataUrl = '';
+    try {
+      dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    } catch (e) {
+      console.warn('Error creating data URL:', e);
+    }
+
+    if (fileHash) {
+      await savePdfFile(`hash_${fileHash}`, file);
+      await savePdfFile(`name_${file.name}`, file);
+    }
+
+    const calculatedWordCount = textContent ? textContent.split(/\s+/).filter(w => w.length > 0).length : 0;
+
+    setSelectedFile({
+      name: file.name,
+      size: sizeFormatted,
+      fileBytes: file.size,
+      fileHash,
+      textContent,
+      wordCount: calculatedWordCount,
+      fileBlob: file,
+      fileUrl: dataUrl
+    });
+  };
+
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      const sizeFormatted = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
-      setSelectedFile({ name: file.name, size: sizeFormatted });
+      processFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      const sizeFormatted = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
-      setSelectedFile({ name: file.name, size: sizeFormatted });
+      processFile(e.target.files[0]);
     }
   };
 
@@ -70,7 +141,7 @@ export const StudentSubmit: React.FC = () => {
         return;
       }
       setPipelineStage('similarity');
-      setPipelineProgress(55);
+      setPipelineProgress(60);
 
       setTimeout(() => {
         setPipelineStage('ai_evaluating');
@@ -79,9 +150,9 @@ export const StudentSubmit: React.FC = () => {
         setTimeout(() => {
           setPipelineStage('ready');
           setPipelineProgress(100);
-        }, 1200);
-      }, 1200);
-    }, 1000);
+        }, 800);
+      }, 800);
+    }, 800);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -101,7 +172,12 @@ export const StudentSubmit: React.FC = () => {
       hour12: true
     }));
 
-    submitAssignment(assignment.id, selectedFile);
+    const result = submitAssignment(assignment.id, selectedFile);
+    if (result) {
+      setPipelineResult(result);
+      setPipelineSimilarity(result.similarityScore);
+    }
+
     setSubmittedSuccess(true);
     runPipeline(simulateWorkerFailure);
   };
@@ -109,6 +185,23 @@ export const StudentSubmit: React.FC = () => {
   const handleRetryPipeline = () => {
     runPipeline(false);
   };
+
+  if (!assignment) {
+    return (
+      <div className="p-12 text-center max-w-md mx-auto space-y-4">
+        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Assignment Not Found</h3>
+        <p className="text-xs text-slate-500">
+          The requested assignment does not exist or has not been published by the instructor yet.
+        </p>
+        <button
+          onClick={() => navigate('/student/assignments')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold shadow-sm transition-colors"
+        >
+          Back to Assignments
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
@@ -212,12 +305,18 @@ export const StudentSubmit: React.FC = () => {
                 </div>
                 <div>
                   <div className="font-semibold text-slate-900 dark:text-slate-100">1. Text & Code Extraction</div>
-                  <div className="text-[10px] text-slate-500">Parsing PDF tokens, syntax trees, and DDL scripts</div>
+                  <div className="text-[10px] text-slate-500 font-mono">
+                    {pipelineStage === 'extracting'
+                      ? 'Parsing PDF token streams & computing SHA-256 hash...'
+                      : pipelineResult?.fileHash
+                      ? `Extracted ${pipelineResult.wordCount} words • SHA-256: ${pipelineResult.fileHash.slice(0, 8)}...${pipelineResult.fileHash.slice(-6)}`
+                      : 'Parsing PDF tokens, syntax trees, and DDL scripts'}
+                  </div>
                 </div>
               </div>
               <div className="shrink-0">
                 {pipelineStage === 'extracting' && (
-                  <Badge variant="blue" size="sm">In Progress...</Badge>
+                  <Badge variant="blue" size="sm">Extracting...</Badge>
                 )}
                 {pipelineStage === 'failed' && (
                   <Badge variant="rose" size="sm">Failed</Badge>
@@ -235,22 +334,32 @@ export const StudentSubmit: React.FC = () => {
                   pipelineStage === 'similarity'
                     ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300'
                     : (pipelineStage === 'ai_evaluating' || pipelineStage === 'ready')
-                    ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
+                    ? (pipelineResult?.isFlagged ? 'bg-rose-100 dark:bg-rose-950 text-rose-600' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400')
                     : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
                 }`}>
                   <ShieldCheck className="w-3.5 h-3.5" />
                 </div>
                 <div>
                   <div className="font-semibold text-slate-900 dark:text-slate-100">2. Academic Integrity & Similarity</div>
-                  <div className="text-[10px] text-slate-500">Cross-referencing institutional archives & repositories</div>
+                  <div className="text-[10px] text-slate-500">
+                    {pipelineResult?.matchedPeerName
+                      ? `Cohort Peer Match: ${pipelineResult.matchedReason}`
+                      : 'Cross-referenced against all cohort submissions for this assignment'}
+                  </div>
                 </div>
               </div>
               <div className="shrink-0">
                 {pipelineStage === 'similarity' && (
-                  <Badge variant="blue" size="sm">Analyzing...</Badge>
+                  <Badge variant="blue" size="sm">Analyzing Cohort...</Badge>
                 )}
                 {(pipelineStage === 'ai_evaluating' || pipelineStage === 'ready') && (
-                  <Badge variant="green" size="sm">12% Overlap (Clean)</Badge>
+                  pipelineResult && pipelineResult.isFlagged ? (
+                    <Badge variant="rose" size="sm">{pipelineResult.similarityScore}% Overlap (Flagged Alert)</Badge>
+                  ) : pipelineResult && pipelineResult.similarityScore === 0 ? (
+                    <Badge variant="green" size="sm">0% Overlap (Clean)</Badge>
+                  ) : (
+                    <Badge variant="green" size="sm">{pipelineResult?.similarityScore ?? 0}% Overlap (Clean)</Badge>
+                  )
                 )}
                 {(pipelineStage === 'extracting' || pipelineStage === 'failed') && (
                   <Badge variant="neutral" size="sm">Queued</Badge>
@@ -272,7 +381,11 @@ export const StudentSubmit: React.FC = () => {
                 </div>
                 <div>
                   <div className="font-semibold text-slate-900 dark:text-slate-100">3. AI Rubric Alignment</div>
-                  <div className="text-[10px] text-slate-500">Drafting criteria suggestions for instructor review</div>
+                  <div className="text-[10px] text-slate-500">
+                    {pipelineResult
+                      ? `Pre-scored ${Object.keys(pipelineResult.aiSuggestedRubric).length} criteria against assignment rubrics`
+                      : 'Drafting criteria suggestions for instructor review'}
+                  </div>
                 </div>
               </div>
               <div className="shrink-0">
@@ -280,7 +393,9 @@ export const StudentSubmit: React.FC = () => {
                   <Badge variant="blue" size="sm">Evaluating...</Badge>
                 )}
                 {pipelineStage === 'ready' && (
-                  <Badge variant="green" size="sm">Ready</Badge>
+                  <Badge variant="green" size="sm">
+                    {pipelineResult ? `Pre-Scored: ${pipelineResult.aiSuggestedScore}/${pipelineResult.totalMarks}` : 'Ready'}
+                  </Badge>
                 )}
                 {(pipelineStage === 'extracting' || pipelineStage === 'similarity' || pipelineStage === 'failed') && (
                   <Badge variant="neutral" size="sm">Pending</Badge>

@@ -21,8 +21,17 @@ export const StudentAssignments: React.FC = () => {
         </p>
       </div>
 
-      <div className="space-y-4">
-        {assignments.map(assignment => {
+      {assignments.length === 0 ? (
+        <div className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-12 text-center space-y-3">
+          <Calendar className="w-12 h-12 text-slate-400 mx-auto" />
+          <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">No assignments posted yet</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Your instructor has not posted any active assignments yet. Check back soon.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {assignments.map(assignment => {
           const mySub = studentSubmissions.find(s => s.assignmentId === assignment.id);
           const isSubmitted = !!mySub;
 
@@ -88,7 +97,8 @@ export const StudentAssignments: React.FC = () => {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

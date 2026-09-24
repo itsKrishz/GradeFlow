@@ -16,10 +16,28 @@ import { Badge } from '../../components/common/Badge';
 export const StudentGradeDetail: React.FC = () => {
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
-  const { submissions, assignments } = useApp();
+  const { submissions, assignments, courses } = useApp();
 
   const submission = submissions.find(s => s.id === submissionId) || submissions[0];
-  const assignment = assignments.find(a => a.id === submission.assignmentId) || assignments[0];
+  const assignment = submission ? (assignments.find(a => a.id === submission.assignmentId) || assignments[0]) : null;
+  const course = assignment ? courses.find(c => c.id === assignment.courseId) : null;
+
+  if (!submission || !assignment) {
+    return (
+      <div className="p-8 text-center space-y-4 max-w-md mx-auto mt-12 bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-xl shadow-sm">
+        <Award className="w-12 h-12 text-slate-400 mx-auto" />
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Grade Details Not Found</h3>
+        <p className="text-xs text-slate-500">This submission or evaluation does not exist or has been removed.</p>
+        <button
+          onClick={() => navigate('/student/grades')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold"
+        >
+          Back to Grades
+        </button>
+      </div>
+    );
+  }
+
   const evaluation = submission.evaluation;
 
   return (
@@ -140,7 +158,7 @@ export const StudentGradeDetail: React.FC = () => {
           </div>
 
           <div className="pt-2 border-t border-academic-lightBorder dark:border-academic-darkBorder text-xs text-slate-500 space-y-1">
-            <p><strong>Evaluator:</strong> Prof. Sarah Jenkins</p>
+            <p><strong>Evaluator:</strong> {course?.teacherName || 'Faculty Evaluator'}</p>
             <p><strong>Integrity Score:</strong> {submission.similarityScore}% (Verified)</p>
           </div>
         </div>

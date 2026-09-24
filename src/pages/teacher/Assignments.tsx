@@ -70,8 +70,24 @@ export const Assignments: React.FC = () => {
       </div>
 
       {/* Assignments List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filteredAssignments.map((assignment) => (
+      {filteredAssignments.length === 0 ? (
+        <div className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-12 text-center space-y-3">
+          <FileText className="w-12 h-12 text-slate-400 mx-auto" />
+          <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">No assignments created yet</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Create your first assignment and grading rubric to get started with evaluations.
+          </p>
+          <button
+            onClick={() => navigate('/teacher/assignments/create')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Assignment</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {filteredAssignments.map((assignment) => (
           <div
             key={assignment.id}
             className="bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-lg p-5 shadow-sm space-y-4 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all"
@@ -141,6 +157,7 @@ export const Assignments: React.FC = () => {
           </div>
         ))}
       </div>
+      )}
 
       {/* DELETE ASSIGNMENT CONFIRMATION MODAL */}
       {assignmentToDelete && (

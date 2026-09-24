@@ -98,6 +98,81 @@ export const api = {
       }>('/auth/me');
     },
 
+    createUser: async (userData: {
+      name: string;
+      username: string;
+      email: string;
+      password: string;
+      role: string;
+      department?: string;
+    }) => {
+      return request<{
+        success: boolean;
+        message: string;
+        user: {
+          id: string;
+          username: string;
+          email: string;
+          name: string;
+          role: 'TEACHER' | 'STUDENT' | 'ADMIN';
+          department?: string;
+        };
+      }>('/auth/users', {
+        method: 'POST',
+        body: JSON.stringify(userData),
+      });
+    },
+
+    getUsers: async () => {
+      return request<{
+        success: boolean;
+        count: number;
+        users: Array<{
+          id: string;
+          username: string;
+          email: string;
+          name: string;
+          role: 'TEACHER' | 'STUDENT' | 'ADMIN';
+          department?: string;
+          createdAt: string;
+        }>;
+      }>('/auth/users');
+    },
+
+    updateUser: async (id: string, userData: {
+      name?: string;
+      username?: string;
+      email?: string;
+      password?: string;
+      role?: string;
+      department?: string;
+    }) => {
+      return request<{
+        success: boolean;
+        message: string;
+        user: {
+          id: string;
+          username: string;
+          email: string;
+          name: string;
+          role: 'TEACHER' | 'STUDENT' | 'ADMIN';
+          department?: string;
+        };
+      }>(`/auth/users/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(userData),
+      });
+    },
+
+    deleteUser: async (id: string) => {
+      return request<{
+        success: boolean;
+        message: string;
+      }>(`/auth/users/${id}`, {
+        method: 'DELETE',
+      });
+    },
+
     logout: () => {
       clearStoredToken();
     },

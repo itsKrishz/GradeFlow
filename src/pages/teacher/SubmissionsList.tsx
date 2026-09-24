@@ -19,13 +19,29 @@ export const SubmissionsList: React.FC = () => {
   const navigate = useNavigate();
   const { assignments, submissions } = useApp();
 
-  const currentAssignmentId = assignmentId || assignments[0]?.id || 'assign-1';
+  const currentAssignmentId = assignmentId || assignments[0]?.id;
   const assignment = assignments.find(a => a.id === currentAssignmentId) || assignments[0];
-  
-  const allSubmissions = submissions.filter(s => s.assignmentId === assignment.id);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Pending' | 'Evaluated' | 'Flagged'>('all');
+
+  if (!assignment) {
+    return (
+      <div className="p-8 text-center space-y-4 max-w-md mx-auto mt-12 bg-white dark:bg-academic-darkCard border border-academic-lightBorder dark:border-academic-darkBorder rounded-xl shadow-sm">
+        <FileCheck2 className="w-12 h-12 text-slate-400 mx-auto" />
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">No Assignment Found</h3>
+        <p className="text-xs text-slate-500">Please create an assignment before viewing submissions.</p>
+        <button
+          onClick={() => navigate('/teacher/assignments')}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold"
+        >
+          View Assignments
+        </button>
+      </div>
+    );
+  }
+
+  const allSubmissions = submissions.filter(s => s.assignmentId === assignment.id);
 
   const filteredSubmissions = allSubmissions.filter(sub => {
     const matchesSearch = 
@@ -114,7 +130,14 @@ export const SubmissionsList: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-academic-lightBorder dark:divide-academic-darkBorder">
-              {filteredSubmissions.map((sub) => {
+              {filteredSubmissions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    No student submissions found matching the criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredSubmissions.map((sub) => {
                 const isFlagged = sub.similarityScore >= sub.similarityReport.threshold;
 
                 return (
@@ -193,7 +216,7 @@ export const SubmissionsList: React.FC = () => {
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>
